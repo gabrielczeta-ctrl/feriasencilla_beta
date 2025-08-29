@@ -12,6 +12,7 @@ const App: React.FC = () => {
   const [currentShader, setCurrentShader] = useState(0);
   const [showHUD, setShowHUD] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
+  const [autoCycle, setAutoCycle] = useState(true);
   
   // Multiplayer state
   const multiplayer = useMultiplayer();
@@ -227,6 +228,23 @@ const App: React.FC = () => {
     };
   }, [handleKeyDown, handleMouseMove, resizeCanvas]);
 
+  // Auto-cycle shaders every 45 seconds
+  useEffect(() => {
+    if (!autoCycle) return;
+    
+    const interval = setInterval(() => {
+      setCurrentShader((prev) => {
+        const nextShader = (prev + 1) % SHADERS.length;
+        if (multiplayer.isConnected) {
+          multiplayer.changeShader(nextShader);
+        }
+        return nextShader;
+      });
+    }, 45000); // 45 seconds
+    
+    return () => clearInterval(interval);
+  }, [autoCycle, multiplayer]);
+
   if (webglError) {
     return (
       <div className="error-panel">
@@ -270,6 +288,8 @@ const App: React.FC = () => {
               className={`shader-btn ${index === currentShader ? 'active' : ''}`}
               onClick={() => {
                 setCurrentShader(index);
+                setAutoCycle(false); // Disable auto-cycle when manually selected
+                setTimeout(() => setAutoCycle(true), 10000); // Re-enable after 10 seconds
                 if (multiplayer.isConnected) {
                   multiplayer.changeShader(index);
                 }

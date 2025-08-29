@@ -149,16 +149,24 @@
 
     .control-panel {
       position: fixed;
-      bottom: 20px;
+      bottom: 10px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(0, 0, 0, 0.9);
       border: 1px solid #00ff88;
       border-radius: 12px;
-      padding: 20px;
-      min-width: 600px;
+      padding: 15px;
+      max-width: 90vw;
+      min-width: 300px;
       z-index: 150;
       transition: opacity 0.3s ease;
+    }
+
+    @media (max-width: 768px) {
+      .control-panel {
+        padding: 10px;
+        bottom: 15px;
+      }
     }
 
     .shader-selector {
