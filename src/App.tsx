@@ -274,7 +274,7 @@ const App: React.FC = () => {
       {/* Control Panel */}
       <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>
         <div className="shader-selector">
-          {NAMES.map((name, index) => (
+          {SHADERS.map((_, index) => (
             <button
               key={index}
               className={`shader-btn ${index === currentShader ? 'active' : ''}`}
@@ -284,8 +284,9 @@ const App: React.FC = () => {
                   multiplayer.changeShader(index);
                 }
               }}
+              title={NAMES[index]}
             >
-              {index + 1}. {name}
+              {index + 1}
             </button>
           ))}
         </div>

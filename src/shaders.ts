@@ -243,6 +243,179 @@ void main() {
 }
 `;
 
-export const SHADERS = [FRAG_NEON_FLOW, FRAG_BLOCK_GLITCH, FRAG_CRT_WAVE, FRAG_PIXEL_MELT];
+export const FRAG_PLASMA_STORM = `#version 300 es
+precision highp float;
 
-export const NAMES = ['Neon Flow', 'Block Glitch', 'CRT Wave', 'Pixel Melt'];
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+void main() {
+  vec2 uv = v_uv;
+  vec2 mouse = u_mouse / u_res;
+  
+  float time = u_time * 0.5;
+  vec2 center = mouse;
+  
+  float d1 = length(uv - center);
+  float d2 = length(uv - vec2(0.5));
+  
+  float plasma = sin(uv.x * 10.0 + time) * 
+                sin(uv.y * 10.0 + time * 1.3) * 
+                sin((uv.x + uv.y) * 8.0 + time * 0.8);
+  
+  plasma += sin(d1 * 20.0 - time * 4.0) * 0.5;
+  plasma += sin(d2 * 15.0 + time * 2.0) * 0.3;
+  
+  vec3 col1 = vec3(0.8, 0.2, 1.0);
+  vec3 col2 = vec3(0.2, 0.8, 1.0); 
+  vec3 col3 = vec3(1.0, 0.4, 0.2);
+  
+  vec3 color = mix(col1, col2, sin(plasma + time) * 0.5 + 0.5);
+  color = mix(color, col3, sin(plasma * 2.0 + time * 1.5) * 0.5 + 0.5);
+  
+  color *= 1.0 + plasma * 0.5;
+  
+  fragColor = vec4(color, 1.0);
+}
+`;
+
+export const FRAG_NEURAL_NET = `#version 300 es
+precision highp float;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+float random(vec2 st) {
+  return fract(sin(dot(st, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+void main() {
+  vec2 uv = v_uv;
+  vec2 mouse = u_mouse / u_res;
+  
+  vec2 grid = floor(uv * 20.0);
+  vec2 gridUV = fract(uv * 20.0);
+  
+  float time = u_time * 0.3;
+  
+  // Neural nodes
+  float node = length(gridUV - 0.5) < 0.1 ? 1.0 : 0.0;
+  
+  // Connections
+  float conn = 0.0;
+  if (random(grid + time) > 0.7) {
+    conn = smoothstep(0.05, 0.02, abs(gridUV.y - 0.5));
+    conn += smoothstep(0.05, 0.02, abs(gridUV.x - 0.5));
+  }
+  
+  // Pulses
+  float pulse = sin(time * 5.0 + length(uv - mouse) * 10.0) * 0.5 + 0.5;
+  
+  vec3 nodeColor = vec3(0.0, 1.0, 0.8) * node * pulse;
+  vec3 connColor = vec3(0.2, 0.8, 1.0) * conn * pulse;
+  
+  vec3 color = nodeColor + connColor;
+  color *= 0.8 + sin(time + length(uv - mouse) * 5.0) * 0.2;
+  
+  fragColor = vec4(color, 1.0);
+}
+`;
+
+export const FRAG_KALEIDOSCOPE = `#version 300 es
+precision highp float;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+void main() {
+  vec2 uv = v_uv - 0.5;
+  vec2 mouse = (u_mouse / u_res - 0.5) * 2.0;
+  
+  float angle = atan(uv.y, uv.x);
+  float radius = length(uv);
+  
+  // Kaleidoscope segments
+  float segments = 6.0 + sin(u_time * 0.5) * 2.0;
+  angle = mod(angle, 3.14159 * 2.0 / segments);
+  if (mod(floor(angle / (3.14159 * 2.0 / segments)), 2.0) == 1.0) {
+    angle = 3.14159 * 2.0 / segments - angle;
+  }
+  
+  vec2 kaleidoUV = vec2(cos(angle), sin(angle)) * radius;
+  kaleidoUV += mouse * 0.3;
+  
+  float pattern = sin(kaleidoUV.x * 10.0 + u_time) * 
+                  sin(kaleidoUV.y * 8.0 + u_time * 1.2) *
+                  sin(radius * 15.0 - u_time * 3.0);
+  
+  vec3 color1 = vec3(1.0, 0.2, 0.6);
+  vec3 color2 = vec3(0.2, 1.0, 0.4);
+  vec3 color3 = vec3(0.6, 0.2, 1.0);
+  
+  vec3 color = mix(color1, color2, sin(pattern + u_time) * 0.5 + 0.5);
+  color = mix(color, color3, sin(pattern * 2.0 + u_time * 1.5) * 0.5 + 0.5);
+  
+  color *= 1.0 - radius * 0.8;
+  
+  fragColor = vec4(color, 1.0);
+}
+`;
+
+export const FRAG_MATRIX_RAIN = `#version 300 es
+precision highp float;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+float random(float x) {
+  return fract(sin(x * 12.9898) * 43758.5453);
+}
+
+void main() {
+  vec2 uv = v_uv;
+  vec2 mouse = u_mouse / u_res;
+  
+  float cols = 80.0;
+  float col = floor(uv.x * cols);
+  
+  float time = u_time * 2.0;
+  float speed = 3.0 + random(col) * 2.0;
+  
+  float y = mod(uv.y + time * speed + random(col) * 10.0, 1.0);
+  
+  float char = step(0.1, random(floor(y * 30.0) + col * 1000.0 + floor(time * 10.0)));
+  
+  float trail = smoothstep(0.0, 0.3, y) * smoothstep(1.0, 0.7, y);
+  
+  vec3 green = vec3(0.0, 1.0, 0.2);
+  vec3 darkGreen = vec3(0.0, 0.4, 0.1);
+  
+  vec3 color = mix(darkGreen, green, char * trail);
+  
+  // Mouse effect
+  float mouseDist = length(uv - mouse);
+  color += vec3(0.2, 0.8, 0.4) * exp(-mouseDist * 5.0) * 0.5;
+  
+  fragColor = vec4(color, 1.0);
+}
+`;
+
+export const SHADERS = [FRAG_NEON_FLOW, FRAG_BLOCK_GLITCH, FRAG_CRT_WAVE, FRAG_PIXEL_MELT, FRAG_PLASMA_STORM, FRAG_NEURAL_NET, FRAG_KALEIDOSCOPE, FRAG_MATRIX_RAIN];
+
+export const NAMES = ['Neon Flow', 'Block Glitch', 'CRT Wave', 'Pixel Melt', 'Plasma Storm', 'Neural Net', 'Kaleidoscope', 'Matrix Rain'];
