@@ -51,7 +51,7 @@ class GameRoom {
   addPlayer(playerId, playerName) {
     const player = {
       id: playerId,
-      name: playerName || `Player${this.players.size + 1}`,
+      name: playerName || generateRandomName(),
       joinedAt: new Date(),
       score: 0,
       isActive: true
@@ -101,29 +101,43 @@ class GameRoom {
     const normalizedX = x / 1920;
     const normalizedY = y / 1080;
     
+    // Get player name
+    const player = this.players.get(playerId);
+    const playerName = player ? player.name : 'Unknown';
+    
+    // Format timestamp (HH:MM)
+    const now = new Date();
+    const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    
+    // Format message with timestamp and name
+    const formattedMessage = `${message}\n${playerName} ${timestamp}`;
+    
     const widget = {
       id: `${playerId}-${Date.now()}-${Math.random()}`,
       playerId,
-      message: message || '✨',
+      message: formattedMessage || '✨',
+      originalMessage: message,
+      playerName,
+      timestamp,
       x: normalizedX,
       y: normalizedY,
-      vx: (Math.random() - 0.5) * 0.0005, // Random velocity
-      vy: (Math.random() - 0.5) * 0.0005,
+      vx: (Math.random() - 0.5) * 0.0002, // Slower random velocity
+      vy: (Math.random() - 0.5) * 0.0002,
       widgetType: Math.random(), // 0-1 for different colors/styles
       createdAt: Date.now(),
-      expiresAt: Date.now() + 15000, // 15 seconds lifespan
-      bounce: 0.8, // Bounce factor
-      size: 0.8 + Math.random() * 0.4 // Size variation
+      expiresAt: Date.now() + 3600000, // 1 hour lifespan
+      bounce: 0.9, // Higher bounce for longer lasting fun
+      size: 0.9 + Math.random() * 0.3 // Size variation
     };
 
     this.widgets.push(widget);
     
-    // Limit total widgets to prevent memory issues
-    if (this.widgets.length > 50) {
-      this.widgets = this.widgets.slice(-50);
+    // Limit total widgets to prevent memory issues (higher limit for 1 hour duration)
+    if (this.widgets.length > 100) {
+      this.widgets = this.widgets.slice(-100);
     }
 
-    console.log(`🎮 Widget '${message}' added by ${playerId} at (${x}, ${y})`);
+    console.log(`🎮 Widget '${message}' added by ${playerName} at (${x}, ${y})`);
     return widget;
   }
 
@@ -258,6 +272,18 @@ class GameRoom {
 // Generate random room ID
 function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+// Generate random fun names
+function generateRandomName() {
+  const adjectives = ['Cool', 'Epic', 'Rad', 'Wild', 'Neon', 'Cosmic', 'Pixel', 'Retro', 'Cyber', 'Glitch', 'Funky', 'Vibey', 'Chill', 'Hyper', 'Ultra', 'Mega', 'Super', 'Turbo', 'Ninja', 'Mystic'];
+  const nouns = ['Cat', 'Dog', 'Fox', 'Wolf', 'Bear', 'Tiger', 'Lion', 'Eagle', 'Shark', 'Dragon', 'Phoenix', 'Robot', 'Wizard', 'Knight', 'Pirate', 'Ghost', 'Alien', 'Comet', 'Star', 'Moon'];
+  
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  const num = Math.floor(Math.random() * 100);
+  
+  return `${adj}${noun}${num}`;
 }
 
 // Socket connection handling

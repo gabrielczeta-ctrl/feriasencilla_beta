@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { VERT, OPTIMIZED_WIDGET_SHADER, NAMES } from './shaders';
+import { VERT, OPTIMIZED_WIDGET_SHADER } from './shaders';
 import { useMultiplayer } from './hooks/useMultiplayer';
 
 const App: React.FC = () => {
@@ -9,23 +9,19 @@ const App: React.FC = () => {
   const animationRef = useRef<number>(0);
   const mouseRef = useRef<[number, number]>([0, 0]);
   
-  const [showHUD, setShowHUD] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
   const [isWritingMessage, setIsWritingMessage] = useState(false);
   const [pendingMessage, setPendingMessage] = useState('');
   const [clickPosition, setClickPosition] = useState<[number, number] | null>(null);
   
-  // Game state
-  const [score, setScore] = useState(0);
-  
   // Multiplayer state
   const multiplayer = useMultiplayer();
 
-  // Auto-join multiplayer on app load
+  // Auto-join multiplayer on app load with no name (will get random name)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!multiplayer.isConnected && multiplayer.connectionStatus === 'disconnected') {
-        multiplayer.joinBattle('Player');
+        multiplayer.joinBattle(); // No name = random name generated
       }
     }, 1000);
     
@@ -169,7 +165,7 @@ const App: React.FC = () => {
     
     for (let i = 0; i < maxWidgets; i++) {
       const widget = activeWidgets[i];
-      const age = Math.max(0, (widget.expiresAt - Date.now()) / 15000); // Normalize age 0-1
+      const age = Math.max(0, (widget.expiresAt - Date.now()) / 3600000); // Normalize age 0-1 for 1 hour
       
       widgetPositions[i * 2] = widget.x;
       widgetPositions[i * 2 + 1] = widget.y;
@@ -189,31 +185,6 @@ const App: React.FC = () => {
     
     animationRef.current = requestAnimationFrame(render);
   }, [multiplayer.room?.widgets]);
-
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Only allow HUD toggle
-    if (e.key.toLowerCase() === 'h') {
-      setShowHUD((prev) => !prev);
-      e.preventDefault();
-    }
-    
-    // Handle input for message writing
-    if (isWritingMessage && e.key === 'Enter') {
-      e.preventDefault();
-      if (pendingMessage.trim() && clickPosition) {
-        multiplayer.sendWidgetMessage(pendingMessage.trim(), clickPosition[0], clickPosition[1]);
-        setScore(prev => prev + 1);
-        setPendingMessage('');
-        setIsWritingMessage(false);
-        setClickPosition(null);
-      }
-    } else if (isWritingMessage && e.key === 'Escape') {
-      e.preventDefault();
-      setIsWritingMessage(false);
-      setPendingMessage('');
-      setClickPosition(null);
-    }
-  }, [isWritingMessage, pendingMessage, clickPosition, multiplayer]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const canvas = canvasRef.current;
@@ -236,6 +207,8 @@ const App: React.FC = () => {
   }, [multiplayer]);
 
   const handleCanvasClick = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+    
     if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
     
     const canvas = canvasRef.current;
@@ -253,19 +226,41 @@ const App: React.FC = () => {
     setPendingMessage('');
   }, [multiplayer]);
 
-  const sendQuickMessage = useCallback((message: string) => {
+  const handleTouch = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    
     if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
     
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || e.touches.length === 0) return;
     
-    // Use mouse position or center
-    const x = mouseRef.current[0] || canvas.width / 2;
-    const y = mouseRef.current[1] || canvas.height / 2;
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     
-    multiplayer.sendWidgetMessage(message, x, y);
-    setScore(prev => prev + 1);
+    const x = (touch.clientX - rect.left) * dpr;
+    const y = (touch.clientY - rect.top) * dpr;
+    
+    // Start writing mode
+    setClickPosition([x, y]);
+    setIsWritingMessage(true);
+    setPendingMessage('');
   }, [multiplayer]);
+
+  const sendMessage = useCallback(() => {
+    if (pendingMessage.trim() && clickPosition) {
+      multiplayer.sendWidgetMessage(pendingMessage.trim(), clickPosition[0], clickPosition[1]);
+      setPendingMessage('');
+      setIsWritingMessage(false);
+      setClickPosition(null);
+    }
+  }, [multiplayer, pendingMessage, clickPosition]);
+
+  const cancelMessage = useCallback(() => {
+    setIsWritingMessage(false);
+    setPendingMessage('');
+    setClickPosition(null);
+  }, []);
 
   useEffect(() => {
     if (initWebGL()) {
@@ -284,22 +279,31 @@ const App: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('click', handleCanvasClick);
+    canvas.addEventListener('touchstart', handleTouch);
     window.addEventListener('resize', resizeCanvas);
     
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('click', handleCanvasClick);
+      canvas.removeEventListener('touchstart', handleTouch);
       window.removeEventListener('resize', resizeCanvas);
     };
-  }, [handleKeyDown, handleMouseMove, handleCanvasClick, resizeCanvas]);
+  }, [handleMouseMove, handleCanvasClick, handleTouch, resizeCanvas]);
 
   if (webglError) {
     return (
-      <div className="error-panel">
+      <div style={{ 
+        position: 'fixed', 
+        top: '50%', 
+        left: '50%', 
+        transform: 'translate(-50%, -50%)',
+        color: 'white',
+        fontSize: '18px',
+        textAlign: 'center',
+        padding: '20px'
+      }}>
         <div>{webglError}</div>
         <div style={{ fontSize: '14px', marginTop: '10px', opacity: 0.7 }}>
           This demo requires WebGL2 support
@@ -317,240 +321,168 @@ const App: React.FC = () => {
 
   return (
     <>
-      <canvas ref={canvasRef} />
-      
-      {/* Click Position Indicator */}
-      {isWritingMessage && clickPosition && (
-        <div
-          className="click-indicator"
-          style={{
-            position: 'fixed',
-            left: `${(clickPosition[0] / (canvasRef.current?.width || 1)) * 100}%`,
-            top: `${(clickPosition[1] / (canvasRef.current?.height || 1)) * 100}%`,
-            transform: 'translate(-50%, -50%)',
-            zIndex: 2000,
-            fontSize: '24px',
-            animation: 'pulse 1s infinite'
-          }}
-        >
-          ✏️
-        </div>
-      )}
+      <canvas ref={canvasRef} style={{ display: 'block', touchAction: 'none' }} />
 
-      {/* Message Input Modal */}
+      {/* Mobile-Optimized Message Input */}
       {isWritingMessage && (
-        <div className="message-input-modal">
-          <div className="message-input-content">
-            <h3>📝 Write your message</h3>
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 3000,
+          padding: '20px'
+        }}>
+          <div style={{
+            background: '#222',
+            borderRadius: '12px',
+            padding: '24px',
+            width: '100%',
+            maxWidth: '400px',
+            border: '2px solid #4dd8ff'
+          }}>
+            <div style={{ color: 'white', fontSize: '18px', marginBottom: '16px', textAlign: 'center' }}>
+              💬 Write your message
+            </div>
             <input
               type="text"
               value={pendingMessage}
               onChange={(e) => setPendingMessage(e.target.value)}
               placeholder="Type your message..."
-              maxLength={50}
+              maxLength={100}
               autoFocus
-              onKeyDown={(e) => e.stopPropagation()} // Prevent bubbling
+              style={{
+                width: '100%',
+                padding: '12px',
+                fontSize: '16px',
+                borderRadius: '8px',
+                border: '1px solid #666',
+                background: '#333',
+                color: 'white',
+                marginBottom: '16px',
+                outline: 'none'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  sendMessage();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelMessage();
+                }
+              }}
             />
-            <div className="message-input-buttons">
-              <button 
-                onClick={() => {
-                  if (pendingMessage.trim() && clickPosition) {
-                    multiplayer.sendWidgetMessage(pendingMessage.trim(), clickPosition[0], clickPosition[1]);
-                    setScore(prev => prev + 1);
-                    setPendingMessage('');
-                    setIsWritingMessage(false);
-                    setClickPosition(null);
-                  }
-                }}
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={sendMessage}
                 disabled={!pendingMessage.trim()}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  fontSize: '16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: pendingMessage.trim() ? '#4dd8ff' : '#666',
+                  color: 'white',
+                  cursor: pendingMessage.trim() ? 'pointer' : 'not-allowed',
+                }}
               >
                 🚀 Send
               </button>
-              <button 
-                onClick={() => {
-                  setIsWritingMessage(false);
-                  setPendingMessage('');
-                  setClickPosition(null);
+              <button
+                onClick={cancelMessage}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  fontSize: '16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#666',
+                  color: 'white',
+                  cursor: 'pointer'
                 }}
               >
                 ❌ Cancel
               </button>
             </div>
-            <small>Press Enter to send, Escape to cancel</small>
           </div>
         </div>
       )}
-      
-      {/* Game Header */}
-      <div className="game-header">
-        <div className="game-title">🎮 WIDGET BOUNCER</div>
-        <div className="room-info">
-          <span className="score-display">🎯 {score}</span>
-          <span className="player-count">
-            👥 {multiplayer.room?.playerCount || 1}
-          </span>
-          <span className={`connection-status ${multiplayer.connectionStatus}`}>
-            {multiplayer.connectionStatus === 'connected' ? '🟢' : 
-             multiplayer.connectionStatus === 'connecting' ? '🟡' : '🔴'} 
-          </span>
-        </div>
-      </div>
 
-      {/* Queue System */}
+      {/* Minimal Turn Indicator */}
       {multiplayer.isConnected && multiplayer.room && (
-        <div className="queue-panel">
-          <div className="current-player-section">
-            <div className="current-player-label">
-              {multiplayer.room.currentPlayer === multiplayer.playerId ? 
-                '🎮 YOUR TURN!' : 
-                `🎯 ${multiplayer.room.players.find(p => p.id === multiplayer.room!.currentPlayer)?.name || 'Player'}'s Turn`
-              }
-            </div>
-            {multiplayer.room.timeRemaining !== undefined && (
-              <div className="timer-display">
-                <div className="timer-bar">
-                  <div 
-                    className="timer-fill"
-                    style={{ 
-                      width: `${(multiplayer.room.timeRemaining / 45) * 100}%`,
-                      backgroundColor: multiplayer.room.timeRemaining < 10 ? '#ff4444' : 
-                                     multiplayer.room.timeRemaining < 20 ? '#ffaa00' : '#44ff44'
-                    }}
-                  />
-                </div>
-                <span className="timer-text">{Math.ceil(multiplayer.room.timeRemaining)}s</span>
-              </div>
-            )}
-          </div>
-          
-          {multiplayer.room.queue && multiplayer.room.queue.length > 0 && (
-            <div className="queue-section">
-              <div className="queue-label">🎭 Up Next:</div>
-              <div className="queue-list">
-                {multiplayer.room.queue.slice(0, 4).map((playerId, index) => {
-                  const player = multiplayer.room!.players.find(p => p.id === playerId);
-                  return (
-                    <div key={playerId} className="queue-item">
-                      {index === 0 ? '👑' : '👤'} {player?.name || 'Player'}
-                    </div>
-                  );
-                })}
-                {multiplayer.room.queue.length > 4 && (
-                  <div className="queue-item">+{multiplayer.room.queue.length - 4} more</div>
-                )}
-              </div>
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '20px',
+          right: '20px',
+          background: 'rgba(0,0,0,0.7)',
+          color: 'white',
+          padding: '12px',
+          borderRadius: '8px',
+          textAlign: 'center',
+          fontSize: '16px',
+          zIndex: 1000,
+          border: multiplayer.isMyTurn ? '2px solid #4dd8ff' : '2px solid #666'
+        }}>
+          {multiplayer.isMyTurn ? 
+            '🎮 Tap anywhere to write a message!' : 
+            `🎯 ${multiplayer.room.players.find(p => p.id === multiplayer.room!.currentPlayer)?.name || 'Someone'}'s turn`
+          }
+          {multiplayer.room.timeRemaining !== undefined && (
+            <div style={{ 
+              marginTop: '4px', 
+              fontSize: '14px', 
+              opacity: 0.8 
+            }}>
+              ⏱️ {Math.ceil(multiplayer.room.timeRemaining)}s
             </div>
           )}
         </div>
       )}
 
-      {/* Bouncing Widgets */}
+      {/* Bouncing Widgets with Timestamps */}
       {multiplayer.room?.widgets?.map((widget) => {
-        const age = Math.max(0, (widget.expiresAt - Date.now()) / 15000); // 0-1
-        const opacity = age;
+        const age = Math.max(0, (widget.expiresAt - Date.now()) / 3600000); // 0-1 for 1 hour
+        const opacity = Math.min(1, age * 2); // Fade more gradually
         
         if (opacity <= 0.1) return null;
         
         return (
           <div
             key={widget.id}
-            className="bouncing-widget"
             style={{
               position: 'fixed',
               left: `${widget.x * 100}%`,
               top: `${widget.y * 100}%`,
               opacity: opacity,
-              transform: `translate(-50%, -50%) scale(${widget.size * opacity})`,
+              transform: `translate(-50%, -50%) scale(${widget.size * Math.min(1, opacity * 1.5)})`,
               pointerEvents: 'none',
               zIndex: 1000,
-              fontSize: '20px',
+              fontSize: '14px',
               color: getWidgetColor(widget.widgetType),
-              textShadow: `0 0 10px ${getWidgetColor(widget.widgetType)}`,
+              textShadow: `0 0 8px ${getWidgetColor(widget.widgetType)}`,
               fontFamily: 'monospace',
               fontWeight: 'bold',
-              background: 'rgba(0,0,0,0.3)',
-              padding: '4px 8px',
-              borderRadius: '8px',
+              background: 'rgba(0,0,0,0.8)',
+              padding: '8px 12px',
+              borderRadius: '12px',
               border: `2px solid ${getWidgetColor(widget.widgetType)}`,
-              whiteSpace: 'nowrap',
+              whiteSpace: 'pre-line',
               maxWidth: '200px',
-              overflow: 'hidden'
+              textAlign: 'center',
+              lineHeight: '1.2'
             }}
           >
             {widget.message}
           </div>
         );
       })}
-
-      {/* Challenge Panel */}
-      <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>
-        <div className="shader-name">🎨 {NAMES[0]}</div>
-        <div className="shader-challenge">
-          {multiplayer.isMyTurn ? 
-            '👆 Click anywhere to write a message!' : 
-            '👀 Watch the bouncing widgets!'
-          }
-        </div>
-        {multiplayer.room?.widgets && (
-          <div className="widget-stats">
-            Active widgets: {multiplayer.room.widgets.filter(w => w.expiresAt > Date.now()).length}
-          </div>
-        )}
-      </div>
-
-      {/* Control Panel */}
-      <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>        
-        <div className="game-controls">
-          <button className="control-btn" onClick={() => setShowHUD(!showHUD)}>
-            👁 {showHUD ? 'Hide' : 'Show'} UI
-          </button>
-          {multiplayer.isMyTurn && (
-            <div className="turn-controls">
-              <span className="turn-indicator">🎮 Your Turn!</span>
-              <span className="interaction-hint">Click anywhere to write a message</span>
-            </div>
-          )}
-        </div>
-
-        {/* Quick Messages */}
-        {multiplayer.isMyTurn && (
-          <div className="quick-messages">
-            <div className="quick-messages-label">Quick Messages:</div>
-            <div className="quick-buttons">
-              {['🎉', '❤️', '🚀', '✨', 'Hello!', 'Nice!', 'Wow!', 'Cool!'].map((msg) => (
-                <button
-                  key={msg}
-                  className="quick-btn"
-                  onClick={() => sendQuickMessage(msg)}
-                >
-                  {msg}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="multiplayer-section">
-          {!multiplayer.isConnected ? (
-            <div className="join-battle-form">
-              <button
-                onClick={() => multiplayer.joinBattle('Player')}
-                disabled={multiplayer.connectionStatus === 'connecting'}
-                className="join-btn"
-              >
-                {multiplayer.connectionStatus === 'connecting' ? '🟡' : '🚀'} Join Widget Battle
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={multiplayer.disconnect}
-              className="disconnect-btn"
-            >
-              🔌 Disconnect
-            </button>
-          )}
-        </div>
-      </div>
     </>
   );
 };
