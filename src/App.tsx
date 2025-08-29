@@ -276,22 +276,27 @@ const App: React.FC = () => {
     };
   }, [handleKeyDown, handleMouseMove, resizeCanvas]);
 
-  // Auto-cycle shaders every 45 seconds
+  // Sync shader changes from multiplayer
   useEffect(() => {
-    if (!autoCycle) return;
+    if (multiplayer.room?.currentShader !== undefined && multiplayer.room.currentShader !== currentShader) {
+      console.log('🔄 Syncing shader from multiplayer:', multiplayer.room.currentShader);
+      setCurrentShader(multiplayer.room.currentShader);
+    }
+  }, [multiplayer.room?.currentShader, currentShader]);
+
+  // Auto-cycle disabled when connected to multiplayer (server controls turns)
+  useEffect(() => {
+    if (!autoCycle || multiplayer.isConnected) return;
     
     const interval = setInterval(() => {
       setCurrentShader((prev) => {
         const nextShader = (prev + 1) % SHADERS.length;
-        if (multiplayer.isConnected) {
-          multiplayer.changeShader(nextShader);
-        }
         return nextShader;
       });
     }, 45000); // 45 seconds
     
     return () => clearInterval(interval);
-  }, [autoCycle, multiplayer]);
+  }, [autoCycle, multiplayer.isConnected]);
 
   // Particle system and challenge rotation
   useEffect(() => {
@@ -339,6 +344,54 @@ const App: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* WarioWare-Style Queue System */}
+      {multiplayer.isConnected && multiplayer.room && (
+        <div className="queue-panel">
+          <div className="current-player-section">
+            <div className="current-player-label">
+              {multiplayer.room.currentPlayer === multiplayer.playerId ? 
+                '🎮 YOUR TURN!' : 
+                `🎯 ${multiplayer.room.players.find(p => p.id === multiplayer.room!.currentPlayer)?.name || 'Player'}'s Turn`
+              }
+            </div>
+            {multiplayer.room.timeRemaining !== undefined && (
+              <div className="timer-display">
+                <div className="timer-bar">
+                  <div 
+                    className="timer-fill"
+                    style={{ 
+                      width: `${(multiplayer.room.timeRemaining / 45) * 100}%`,
+                      backgroundColor: multiplayer.room.timeRemaining < 10 ? '#ff4444' : 
+                                     multiplayer.room.timeRemaining < 20 ? '#ffaa00' : '#44ff44'
+                    }}
+                  />
+                </div>
+                <span className="timer-text">{Math.ceil(multiplayer.room.timeRemaining)}s</span>
+              </div>
+            )}
+          </div>
+          
+          {multiplayer.room.queue && multiplayer.room.queue.length > 0 && (
+            <div className="queue-section">
+              <div className="queue-label">🎭 Up Next:</div>
+              <div className="queue-list">
+                {multiplayer.room.queue.slice(0, 4).map((playerId, index) => {
+                  const player = multiplayer.room!.players.find(p => p.id === playerId);
+                  return (
+                    <div key={playerId} className="queue-item">
+                      {index === 0 ? '👑' : '👤'} {player?.name || 'Player'}
+                    </div>
+                  );
+                })}
+                {multiplayer.room.queue.length > 4 && (
+                  <div className="queue-item">+{multiplayer.room.queue.length - 4} more</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Challenge Panel */}
       <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>

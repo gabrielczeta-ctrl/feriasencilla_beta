@@ -16,8 +16,11 @@ interface Room {
   playerCount: number;
   players: Player[];
   currentShader: number;
-  gameState: 'waiting' | 'playing' | 'finished';
+  gameState: 'waiting' | 'playing' | 'finished' | 'transitioning';
   mousePositions: Record<string, { x: number; y: number; timestamp: number }>;
+  currentPlayer?: string;
+  queue?: string[];
+  timeRemaining?: number;
 }
 
 interface MultiplayerState {
@@ -125,6 +128,27 @@ export function useMultiplayer() {
       setState(prev => ({
         ...prev,
         room: prev.room ? { ...prev.room, currentShader: data.shaderIndex } : null
+      }));
+    });
+
+    socket.on('game-state-changed', (data: { 
+      currentPlayer: string; 
+      shaderIndex: number; 
+      timeRemaining: number; 
+      queue: string[];
+      gamePhase: 'waiting' | 'playing' | 'transitioning';
+    }) => {
+      console.log('🎮 Game state update:', data);
+      setState(prev => ({
+        ...prev,
+        room: prev.room ? { 
+          ...prev.room, 
+          currentShader: data.shaderIndex,
+          gameState: data.gamePhase,
+          currentPlayer: data.currentPlayer,
+          queue: data.queue,
+          timeRemaining: data.timeRemaining
+        } : null
       }));
     });
 
