@@ -121,8 +121,8 @@ class GameRoom {
       timestamp,
       x: normalizedX,
       y: normalizedY,
-      vx: (Math.random() - 0.5) * 0.0002, // Slower random velocity
-      vy: (Math.random() - 0.5) * 0.0002,
+      vx: (Math.random() - 0.5) * 0.001, // More initial movement
+      vy: (Math.random() - 0.5) * 0.001,
       widgetType: Math.random(), // 0-1 for different colors/styles
       createdAt: Date.now(),
       expiresAt: Date.now() + 3600000, // 1 hour lifespan
@@ -160,28 +160,41 @@ class GameRoom {
       widget.x += widget.vx;
       widget.y += widget.vy;
       
-      // Bounce off edges
-      if (widget.x <= 0 || widget.x >= 1) {
-        widget.vx *= -widget.bounce;
-        widget.x = Math.max(0, Math.min(1, widget.x));
+      // Bounce off edges with more energy
+      if (widget.x <= 0.05 || widget.x >= 0.95) {
+        widget.vx *= -0.8;
+        widget.x = Math.max(0.05, Math.min(0.95, widget.x));
+        // Add some random energy on bounce
+        widget.vx += (Math.random() - 0.5) * 0.0001;
         updated = true;
       }
-      if (widget.y <= 0 || widget.y >= 1) {
-        widget.vy *= -widget.bounce;
-        widget.y = Math.max(0, Math.min(1, widget.y));
+      if (widget.y <= 0.05 || widget.y >= 0.95) {
+        widget.vy *= -0.8;
+        widget.y = Math.max(0.05, Math.min(0.95, widget.y));
+        // Add some random energy on bounce
+        widget.vy += (Math.random() - 0.5) * 0.0001;
         updated = true;
       }
       
-      // Add some gravity
-      widget.vy += 0.00001;
+      // Floating motion instead of gravity
+      const time = Date.now() * 0.001;
+      const floatX = Math.sin(time * 0.5 + widget.widgetType * 10) * 0.00005;
+      const floatY = Math.cos(time * 0.3 + widget.widgetType * 8) * 0.00003;
       
-      // Slight air resistance
-      widget.vx *= 0.999;
-      widget.vy *= 0.999;
+      widget.vx += floatX;
+      widget.vy += floatY;
+      
+      // Very light air resistance to keep movement smooth
+      widget.vx *= 0.9995;
+      widget.vy *= 0.9995;
+      
+      // Keep some minimum movement
+      if (Math.abs(widget.vx) < 0.00001) widget.vx += (Math.random() - 0.5) * 0.00002;
+      if (Math.abs(widget.vy) < 0.00001) widget.vy += (Math.random() - 0.5) * 0.00002;
     }
     
-    // Only broadcast if widgets actually moved significantly
-    if (updated && this.widgets.length > 0 && Math.random() < 0.1) { // Throttle updates
+    // Broadcast updates more frequently for smooth movement
+    if (this.widgets.length > 0 && Math.random() < 0.3) {
       this.broadcastWidgetUpdate();
     }
   }

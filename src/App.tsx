@@ -13,20 +13,34 @@ const App: React.FC = () => {
   const [isWritingMessage, setIsWritingMessage] = useState(false);
   const [pendingMessage, setPendingMessage] = useState('');
   const [clickPosition, setClickPosition] = useState<[number, number] | null>(null);
+  const [showClickEffect, setShowClickEffect] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState('');
   
   // Multiplayer state
   const multiplayer = useMultiplayer();
 
-  // Auto-join multiplayer on app load with no name (will get random name)
+  // Auto-join multiplayer with connection status
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!multiplayer.isConnected && multiplayer.connectionStatus === 'disconnected') {
-        multiplayer.joinBattle(); // No name = random name generated
+        setConnectionStatus('Connecting...');
+        multiplayer.joinBattle();
       }
-    }, 1000);
+    }, 500);
     
     return () => clearTimeout(timer);
   }, []);
+
+  // Update connection status
+  useEffect(() => {
+    if (multiplayer.connectionStatus === 'connected') {
+      setConnectionStatus('');
+    } else if (multiplayer.connectionStatus === 'connecting') {
+      setConnectionStatus('Connecting...');
+    } else {
+      setConnectionStatus('Connection lost...');
+    }
+  }, [multiplayer.connectionStatus]);
 
   const compileShader = useCallback((gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null => {
     const shader = gl.createShader(type);
@@ -74,7 +88,7 @@ const App: React.FC = () => {
     if (!canvas) return false;
 
     const gl = canvas.getContext('webgl2', { 
-      antialias: false,
+      antialias: true,
       alpha: false,
       preserveDrawingBuffer: false
     });
@@ -159,13 +173,13 @@ const App: React.FC = () => {
     gl.uniform1f(widgetCountUniform, maxWidgets);
     
     // Widget arrays
-    const widgetPositions = new Float32Array(40); // 20 * 2 for vec2 array
+    const widgetPositions = new Float32Array(40);
     const widgetAges = new Float32Array(20);
     const widgetTypes = new Float32Array(20);
     
     for (let i = 0; i < maxWidgets; i++) {
       const widget = activeWidgets[i];
-      const age = Math.max(0, (widget.expiresAt - Date.now()) / 3600000); // Normalize age 0-1 for 1 hour
+      const age = Math.max(0, (widget.expiresAt - Date.now()) / 3600000);
       
       widgetPositions[i * 2] = widget.x;
       widgetPositions[i * 2 + 1] = widget.y;
@@ -200,16 +214,19 @@ const App: React.FC = () => {
     
     mouseRef.current = newMousePos;
     
-    // Send to multiplayer if connected
     if (multiplayer.isConnected) {
       multiplayer.sendMousePosition(newMousePos[0], newMousePos[1]);
     }
   }, [multiplayer]);
 
+  const showClickAnimation = useCallback((x: number, y: number) => {
+    setClickPosition([x, y]);
+    setShowClickEffect(true);
+    setTimeout(() => setShowClickEffect(false), 1000);
+  }, []);
+
   const handleCanvasClick = useCallback((e: MouseEvent) => {
     e.preventDefault();
-    
-    if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
     
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -220,16 +237,21 @@ const App: React.FC = () => {
     const x = (e.clientX - rect.left) * dpr;
     const y = (e.clientY - rect.top) * dpr;
     
+    // Show click animation
+    showClickAnimation(x, y);
+    
+    if (!multiplayer.isMyTurn || !multiplayer.isConnected) {
+      return; // Still show click effect, just don't open input
+    }
+    
     // Start writing mode
     setClickPosition([x, y]);
     setIsWritingMessage(true);
     setPendingMessage('');
-  }, [multiplayer]);
+  }, [multiplayer, showClickAnimation]);
 
   const handleTouch = useCallback((e: TouchEvent) => {
     e.preventDefault();
-    
-    if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
     
     const canvas = canvasRef.current;
     if (!canvas || e.touches.length === 0) return;
@@ -241,11 +263,18 @@ const App: React.FC = () => {
     const x = (touch.clientX - rect.left) * dpr;
     const y = (touch.clientY - rect.top) * dpr;
     
+    // Show click animation
+    showClickAnimation(x, y);
+    
+    if (!multiplayer.isMyTurn || !multiplayer.isConnected) {
+      return; // Still show touch effect, just don't open input
+    }
+    
     // Start writing mode
     setClickPosition([x, y]);
     setIsWritingMessage(true);
     setPendingMessage('');
-  }, [multiplayer]);
+  }, [multiplayer, showClickAnimation]);
 
   const sendMessage = useCallback(() => {
     if (pendingMessage.trim() && clickPosition) {
@@ -279,9 +308,9 @@ const App: React.FC = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     canvas.addEventListener('click', handleCanvasClick);
-    canvas.addEventListener('touchstart', handleTouch);
+    canvas.addEventListener('touchstart', handleTouch, { passive: false });
     window.addEventListener('resize', resizeCanvas);
     
     return () => {
@@ -302,28 +331,55 @@ const App: React.FC = () => {
         color: 'white',
         fontSize: '18px',
         textAlign: 'center',
-        padding: '20px'
+        padding: '20px',
+        backgroundColor: 'rgba(0,0,0,0.8)',
+        borderRadius: '12px'
       }}>
-        <div>{webglError}</div>
+        <div>⚠️ {webglError}</div>
         <div style={{ fontSize: '14px', marginTop: '10px', opacity: 0.7 }}>
-          This demo requires WebGL2 support
+          This app requires WebGL2 support
         </div>
       </div>
     );
   }
 
   const getWidgetColor = (widgetType: number) => {
-    if (widgetType < 0.25) return '#ff4d6d'; // Pink
-    else if (widgetType < 0.5) return '#4dd8ff'; // Cyan
-    else if (widgetType < 0.75) return '#ffed4a'; // Yellow
-    else return '#52d87f'; // Green
+    if (widgetType < 0.25) return '#ff6b9d'; // Pink
+    else if (widgetType < 0.5) return '#4ecdc4'; // Teal
+    else if (widgetType < 0.75) return '#ffe66d'; // Yellow
+    else return '#95e1d3'; // Mint
   };
 
   return (
     <>
-      <canvas ref={canvasRef} style={{ display: 'block', touchAction: 'none' }} />
+      <canvas 
+        ref={canvasRef} 
+        style={{ 
+          display: 'block', 
+          touchAction: 'none',
+          cursor: multiplayer.isMyTurn ? 'crosshair' : 'default'
+        }} 
+      />
 
-      {/* Mobile-Optimized Message Input */}
+      {/* Click Effect Animation */}
+      {showClickEffect && clickPosition && (
+        <div
+          style={{
+            position: 'fixed',
+            left: `${(clickPosition[0] / (canvasRef.current?.width || 1)) * 100}%`,
+            top: `${(clickPosition[1] / (canvasRef.current?.height || 1)) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 2000,
+            pointerEvents: 'none',
+            fontSize: '32px',
+            animation: 'clickPulse 1s ease-out forwards'
+          }}
+        >
+          ✨
+        </div>
+      )}
+
+      {/* Enhanced Message Input */}
       {isWritingMessage && (
         <div style={{
           position: 'fixed',
@@ -331,44 +387,57 @@ const App: React.FC = () => {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0,0,0,0.8)',
+          background: 'rgba(0,0,0,0.9)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 3000,
-          padding: '20px'
+          padding: '20px',
+          backdropFilter: 'blur(10px)'
         }}>
           <div style={{
-            background: '#222',
-            borderRadius: '12px',
-            padding: '24px',
+            background: 'linear-gradient(145deg, #2a2a2a, #1e1e1e)',
+            borderRadius: '16px',
+            padding: '32px',
             width: '100%',
-            maxWidth: '400px',
-            border: '2px solid #4dd8ff'
+            maxWidth: '450px',
+            border: '2px solid #4ecdc4',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
+            animation: 'slideUp 0.3s ease-out'
           }}>
-            <div style={{ color: 'white', fontSize: '18px', marginBottom: '16px', textAlign: 'center' }}>
+            <div style={{ 
+              color: '#4ecdc4', 
+              fontSize: '24px', 
+              marginBottom: '20px', 
+              textAlign: 'center',
+              fontWeight: 'bold'
+            }}>
               💬 Write your message
             </div>
             <input
               type="text"
               value={pendingMessage}
               onChange={(e) => setPendingMessage(e.target.value)}
-              placeholder="Type your message..."
+              placeholder="What's on your mind?"
               maxLength={100}
               autoFocus
               style={{
                 width: '100%',
-                padding: '12px',
-                fontSize: '16px',
-                borderRadius: '8px',
-                border: '1px solid #666',
-                background: '#333',
+                padding: '16px',
+                fontSize: '18px',
+                borderRadius: '12px',
+                border: '2px solid #444',
+                background: 'rgba(255,255,255,0.1)',
                 color: 'white',
-                marginBottom: '16px',
-                outline: 'none'
+                marginBottom: '20px',
+                outline: 'none',
+                transition: 'border-color 0.3s ease',
+                fontFamily: 'inherit'
               }}
+              onFocus={(e) => e.target.style.borderColor = '#4ecdc4'}
+              onBlur={(e) => e.target.style.borderColor = '#444'}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && pendingMessage.trim()) {
                   e.preventDefault();
                   sendMessage();
                 } else if (e.key === 'Escape') {
@@ -377,19 +446,32 @@ const App: React.FC = () => {
                 }
               }}
             />
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '16px' }}>
               <button
                 onClick={sendMessage}
                 disabled={!pendingMessage.trim()}
                 style={{
                   flex: 1,
-                  padding: '12px',
-                  fontSize: '16px',
-                  borderRadius: '8px',
+                  padding: '16px',
+                  fontSize: '18px',
+                  borderRadius: '12px',
                   border: 'none',
-                  background: pendingMessage.trim() ? '#4dd8ff' : '#666',
+                  background: pendingMessage.trim() 
+                    ? 'linear-gradient(145deg, #4ecdc4, #3ab6ac)' 
+                    : '#444',
                   color: 'white',
                   cursor: pendingMessage.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: 'bold',
+                  transition: 'all 0.3s ease',
+                  transform: pendingMessage.trim() ? 'scale(1)' : 'scale(0.95)',
+                }}
+                onMouseEnter={(e) => {
+                  if (pendingMessage.trim()) {
+                    (e.target as HTMLElement).style.transform = 'scale(1.05)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.transform = pendingMessage.trim() ? 'scale(1)' : 'scale(0.95)';
                 }}
               >
                 🚀 Send
@@ -398,58 +480,113 @@ const App: React.FC = () => {
                 onClick={cancelMessage}
                 style={{
                   flex: 1,
-                  padding: '12px',
-                  fontSize: '16px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: '#666',
-                  color: 'white',
-                  cursor: 'pointer'
+                  padding: '16px',
+                  fontSize: '18px',
+                  borderRadius: '12px',
+                  border: '2px solid #666',
+                  background: 'transparent',
+                  color: '#ccc',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  (e.target as HTMLElement).style.borderColor = '#ff6b9d';
+                  (e.target as HTMLElement).style.color = '#ff6b9d';
+                }}
+                onMouseLeave={(e) => {
+                  (e.target as HTMLElement).style.borderColor = '#666';
+                  (e.target as HTMLElement).style.color = '#ccc';
                 }}
               >
                 ❌ Cancel
               </button>
             </div>
+            <div style={{ 
+              color: '#888', 
+              fontSize: '14px', 
+              textAlign: 'center', 
+              marginTop: '16px' 
+            }}>
+              Press Enter to send • Escape to cancel
+            </div>
           </div>
         </div>
       )}
 
-      {/* Minimal Turn Indicator */}
+      {/* Connection Status */}
+      {connectionStatus && (
+        <div style={{
+          position: 'fixed',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: 'rgba(0,0,0,0.8)',
+          color: '#4ecdc4',
+          padding: '16px 24px',
+          borderRadius: '8px',
+          fontSize: '16px',
+          zIndex: 2000
+        }}>
+          {connectionStatus}
+        </div>
+      )}
+
+      {/* Enhanced Turn Indicator */}
       {multiplayer.isConnected && multiplayer.room && (
         <div style={{
           position: 'fixed',
           top: '20px',
           left: '20px',
           right: '20px',
-          background: 'rgba(0,0,0,0.7)',
+          background: multiplayer.isMyTurn 
+            ? 'linear-gradient(145deg, rgba(78, 205, 196, 0.2), rgba(58, 182, 172, 0.2))'
+            : 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(10px)',
           color: 'white',
-          padding: '12px',
-          borderRadius: '8px',
+          padding: '16px',
+          borderRadius: '12px',
           textAlign: 'center',
           fontSize: '16px',
           zIndex: 1000,
-          border: multiplayer.isMyTurn ? '2px solid #4dd8ff' : '2px solid #666'
+          border: multiplayer.isMyTurn ? '2px solid #4ecdc4' : '2px solid #444',
+          animation: multiplayer.isMyTurn ? 'glow 2s ease-in-out infinite alternate' : 'none'
         }}>
-          {multiplayer.isMyTurn ? 
-            '🎮 Tap anywhere to write a message!' : 
-            `🎯 ${multiplayer.room.players.find(p => p.id === multiplayer.room!.currentPlayer)?.name || 'Someone'}'s turn`
-          }
+          {multiplayer.isMyTurn ? (
+            <div>
+              <div style={{ fontSize: '18px', fontWeight: 'bold' }}>🎮 Your Turn!</div>
+              <div style={{ fontSize: '14px', opacity: 0.8, marginTop: '4px' }}>
+                Tap anywhere to write a message
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div>🎯 {multiplayer.room.players.find(p => p.id === multiplayer.room!.currentPlayer)?.name || 'Someone'}'s turn</div>
+              <div style={{ fontSize: '14px', opacity: 0.7, marginTop: '4px' }}>
+                Watch the magic happen...
+              </div>
+            </div>
+          )}
           {multiplayer.room.timeRemaining !== undefined && (
             <div style={{ 
-              marginTop: '4px', 
-              fontSize: '14px', 
-              opacity: 0.8 
+              marginTop: '8px',
+              fontSize: '14px',
+              opacity: 0.8,
+              background: 'rgba(255,255,255,0.1)',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              display: 'inline-block'
             }}>
-              ⏱️ {Math.ceil(multiplayer.room.timeRemaining)}s
+              ⏱️ {Math.ceil(multiplayer.room.timeRemaining)}s remaining
             </div>
           )}
         </div>
       )}
 
-      {/* Bouncing Widgets with Timestamps */}
+      {/* Enhanced Floating Widgets */}
       {multiplayer.room?.widgets?.map((widget) => {
-        const age = Math.max(0, (widget.expiresAt - Date.now()) / 3600000); // 0-1 for 1 hour
-        const opacity = Math.min(1, age * 2); // Fade more gradually
+        const age = Math.max(0, (widget.expiresAt - Date.now()) / 3600000);
+        const opacity = Math.min(1, age);
         
         if (opacity <= 0.1) return null;
         
@@ -461,28 +598,58 @@ const App: React.FC = () => {
               left: `${widget.x * 100}%`,
               top: `${widget.y * 100}%`,
               opacity: opacity,
-              transform: `translate(-50%, -50%) scale(${widget.size * Math.min(1, opacity * 1.5)})`,
+              transform: `translate(-50%, -50%) scale(${0.8 + widget.size * 0.4})`,
               pointerEvents: 'none',
               zIndex: 1000,
-              fontSize: '14px',
+              fontSize: '15px',
               color: getWidgetColor(widget.widgetType),
-              textShadow: `0 0 8px ${getWidgetColor(widget.widgetType)}`,
-              fontFamily: 'monospace',
+              textShadow: `0 0 12px ${getWidgetColor(widget.widgetType)}`,
+              fontFamily: '"Comic Sans MS", cursive, sans-serif',
               fontWeight: 'bold',
               background: 'rgba(0,0,0,0.8)',
-              padding: '8px 12px',
-              borderRadius: '12px',
+              backdropFilter: 'blur(8px)',
+              padding: '12px 16px',
+              borderRadius: '16px',
               border: `2px solid ${getWidgetColor(widget.widgetType)}`,
               whiteSpace: 'pre-line',
-              maxWidth: '200px',
+              maxWidth: '220px',
               textAlign: 'center',
-              lineHeight: '1.2'
+              lineHeight: '1.3',
+              boxShadow: `0 0 20px rgba(${
+                widget.widgetType < 0.25 ? '255,107,157' :
+                widget.widgetType < 0.5 ? '78,205,196' :
+                widget.widgetType < 0.75 ? '255,230,109' : '149,225,211'
+              },0.4)`,
+              animation: 'float 3s ease-in-out infinite'
             }}
           >
             {widget.message}
           </div>
         );
       })}
+
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes clickPulse {
+          0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+          100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+        }
+        
+        @keyframes slideUp {
+          from { transform: translateY(50px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes glow {
+          from { box-shadow: 0 0 20px rgba(78, 205, 196, 0.3); }
+          to { box-shadow: 0 0 30px rgba(78, 205, 196, 0.6); }
+        }
+        
+        @keyframes float {
+          0%, 100% { transform: translate(-50%, -50%) translateY(0px); }
+          50% { transform: translate(-50%, -50%) translateY(-10px); }
+        }
+      `}</style>
     </>
   );
 };
