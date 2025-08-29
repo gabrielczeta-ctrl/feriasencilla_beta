@@ -1,22 +1,13 @@
 {
-  "name": "shader-battle-server",
-  "version": "1.0.0",
+  "name": "partywall-ws-server",
+  "private": true,
   "type": "module",
-  "description": "Real-time multiplayer WebSocket server for Shader Battle Arena",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "keywords": ["websocket", "multiplayer", "shader", "game", "realtime"],
-  "author": "Shader Battle Team",
-  "license": "MIT",
+  "engines": { "node": ">=18" },
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "socket.io": "^4.7.5"
+    "ioredis": "^5.4.1",
+    "ws": "^8.17.0"
+  },
+  "scripts": {
+    "start": "node server.js"
   }
 }

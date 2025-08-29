@@ -2,6 +2,12 @@
 node_modules/
 .npm
 .yarn
+/.pnp
+.pnp.js
+
+# Next.js
+/.next/
+/out/
 
 # Build outputs
 dist/
@@ -22,5 +28,13 @@ build/
 .DS_Store
 Thumbs.db
 
-# Vite
-.vite/
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# Server specific
+server/node_modules/
+server/.env
