@@ -29,7 +29,8 @@ interface MultiplayerState {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
 }
 
-const SERVER_URL = 'ws://localhost:3001'; // Will be configurable later
+// Using Railway public URL for the deployed server
+const SERVER_URL = 'wss://shader-battle-server-production.up.railway.app';
 
 export function useMultiplayer() {
   const [state, setState] = useState<MultiplayerState>({
@@ -131,16 +132,16 @@ export function useMultiplayer() {
 
   }, []);
 
-  // Join a room
-  const joinRoom = useCallback((roomId?: string, playerName?: string) => {
+  // Join the global battle room
+  const joinBattle = useCallback((playerName?: string) => {
     if (!socketRef.current?.connected) {
       connect();
-      // Wait for connection then join
+      // Wait for connection then join the global room
       setTimeout(() => {
-        socketRef.current?.emit('join-room', { roomId, playerName });
-      }, 500);
+        socketRef.current?.emit('join-room', { roomId: 'GLOBAL', playerName });
+      }, 1000);
     } else {
-      socketRef.current.emit('join-room', { roomId, playerName });
+      socketRef.current.emit('join-room', { roomId: 'GLOBAL', playerName });
     }
   }, [connect]);
 
@@ -196,7 +197,7 @@ export function useMultiplayer() {
   return {
     ...state,
     connect,
-    joinRoom,
+    joinBattle,
     sendMousePosition,
     changeShader,
     disconnect

@@ -16,8 +16,7 @@ const App: React.FC = () => {
   // Multiplayer state
   const multiplayer = useMultiplayer();
   const [playerName, setPlayerName] = useState('');
-  const [roomId, setRoomId] = useState('');
-  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+  const [isJoiningBattle, setIsJoiningBattle] = useState(false);
 
   const compileShader = useCallback((gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null => {
     const shader = gl.createShader(type);
@@ -249,15 +248,14 @@ const App: React.FC = () => {
         <div className="game-title">🎮 SHADER BATTLE ARENA</div>
         <div className="room-info">
           <span className="room-id">
-            Room: #{multiplayer.room?.id || 'SOLO'}
+            🌍 GLOBAL BATTLE ROOM
           </span>
           <span className="player-count">
-            👥 {multiplayer.room?.playerCount || 1} Player{(multiplayer.room?.playerCount || 1) > 1 ? 's' : ''}
+            👥 {multiplayer.room?.playerCount || 1} Player{(multiplayer.room?.playerCount || 1) > 1 ? 's' : ''} Online
           </span>
           <span className={`connection-status ${multiplayer.connectionStatus}`}>
-            {multiplayer.connectionStatus === 'connected' ? '🟢' : 
-             multiplayer.connectionStatus === 'connecting' ? '🟡' : '🔴'} 
-            {multiplayer.connectionStatus}
+            {multiplayer.connectionStatus === 'connected' ? '🟢 LIVE' : 
+             multiplayer.connectionStatus === 'connecting' ? '🟡 JOINING...' : '🔴 SOLO MODE'} 
           </span>
         </div>
       </div>
@@ -265,7 +263,12 @@ const App: React.FC = () => {
       {/* Shader Info Panel */}
       <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>
         <div className="shader-name">{NAMES[currentShader]}</div>
-        <div className="shader-challenge">Move your mouse to distort reality!</div>
+        <div className="shader-challenge">
+          {multiplayer.isConnected 
+            ? `🌐 Live with ${multiplayer.otherPlayers.length} other player${multiplayer.otherPlayers.length !== 1 ? 's' : ''}!`
+            : 'Move your mouse to distort reality! Join the battle below ⬇️'
+          }
+        </div>
       </div>
 
       {/* Control Panel */}
@@ -301,55 +304,54 @@ const App: React.FC = () => {
 
         <div className="multiplayer-section">
           {!multiplayer.isConnected ? (
-            <div className="join-room-form">
-              <h3>🌐 Join Multiplayer Battle!</h3>
+            <div className="join-battle-form">
+              <h3>🌍 Join Global Battle Room!</h3>
+              <p className="battle-description">
+                Connect with players worldwide! All your mouse movements will affect the shared shader canvas in real-time.
+              </p>
               <div className="form-row">
                 <input
                   type="text"
-                  placeholder="Your name (optional)"
+                  placeholder="Your battle name (optional)"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
                   className="name-input"
-                />
-                <input
-                  type="text"
-                  placeholder="Room ID (leave empty for new room)"
-                  value={roomId}
-                  onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-                  className="room-input"
+                  maxLength={20}
                 />
                 <button
                   onClick={() => {
-                    setIsJoiningRoom(true);
-                    multiplayer.joinRoom(roomId || undefined, playerName || undefined);
+                    setIsJoiningBattle(true);
+                    multiplayer.joinBattle(playerName || undefined);
                   }}
-                  disabled={isJoiningRoom}
+                  disabled={isJoiningBattle}
                   className="join-btn"
                 >
-                  {isJoiningRoom ? '🔄 Connecting...' : '🚀 Join Battle'}
+                  {isJoiningBattle ? '🔄 Joining Battle...' : '🚀 JOIN LIVE BATTLE'}
                 </button>
               </div>
             </div>
           ) : (
             <div className="multiplayer-status">
-              <div className="status-item">
-                <span className="status-label">You:</span>
-                <span className="status-value">{multiplayer.playerName} 🟢</span>
-              </div>
-              <div className="status-item">
-                <span className="status-label">Other Players:</span>
-                <span className="status-value">
-                  {multiplayer.otherPlayers.length > 0 
-                    ? multiplayer.otherPlayers.map(p => p.name).join(', ')
-                    : 'Waiting for players... 👥'
-                  }
-                </span>
+              <div className="battle-info">
+                <div className="status-item">
+                  <span className="status-label">You:</span>
+                  <span className="status-value">{multiplayer.playerName} 🟢</span>
+                </div>
+                <div className="status-item">
+                  <span className="status-label">Battle Partners:</span>
+                  <span className="status-value">
+                    {multiplayer.otherPlayers.length > 0 
+                      ? multiplayer.otherPlayers.map(p => p.name).join(', ')
+                      : 'Waiting for more warriors... ⚔️'
+                    }
+                  </span>
+                </div>
               </div>
               <button
                 onClick={multiplayer.disconnect}
                 className="disconnect-btn"
               >
-                🔌 Leave Room
+                🔌 Leave Battle
               </button>
             </div>
           )}
