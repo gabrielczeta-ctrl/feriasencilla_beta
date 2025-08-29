@@ -14,9 +14,27 @@ const App: React.FC = () => {
   const [webglError, setWebglError] = useState<string | null>(null);
   const [autoCycle, setAutoCycle] = useState(true);
   
+  // Game state
+  const [score, setScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [challenge, setChallenge] = useState<string>('Move mouse to center');
+  const [challengeProgress, setChallengeProgress] = useState(0);
+  const [particles, setParticles] = useState<Array<{x: number, y: number, life: number}>>([]);
+  
   // Multiplayer state
   const multiplayer = useMultiplayer();
   const [isJoiningBattle, setIsJoiningBattle] = useState(false);
+
+  // Auto-join multiplayer on app load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!multiplayer.isConnected && multiplayer.connectionStatus === 'disconnected') {
+        multiplayer.joinBattle('Player');
+      }
+    }, 1000); // Give WebGL time to initialize first
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   const compileShader = useCallback((gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null => {
     const shader = gl.createShader(type);
@@ -179,6 +197,15 @@ const App: React.FC = () => {
     }
   }, [currentShader]);
 
+  // Game challenges
+  const challenges = [
+    'Move mouse to center',
+    'Draw circles with your mouse',
+    'Keep mouse in corners for 3s',
+    'Trace the edges quickly',
+    'Make rapid movements'
+  ];
+
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -193,11 +220,32 @@ const App: React.FC = () => {
     
     mouseRef.current = newMousePos;
     
+    // Game logic - check challenges
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const mouseX = newMousePos[0];
+    const mouseY = newMousePos[1];
+    
+    const distanceFromCenter = Math.sqrt((mouseX - centerX) ** 2 + (mouseY - centerY) ** 2);
+    const maxDistance = Math.sqrt(centerX ** 2 + centerY ** 2);
+    
+    // Update challenge progress based on current challenge
+    if (challenge.includes('center')) {
+      const progress = Math.max(0, 1 - (distanceFromCenter / (maxDistance * 0.3)));
+      setChallengeProgress(progress);
+      if (progress > 0.8) {
+        setScore(prev => prev + 1);
+        setStreak(prev => prev + 1);
+        // Add particle effect
+        setParticles(prev => [...prev, { x: mouseX, y: mouseY, life: 1.0 }]);
+      }
+    }
+    
     // Send to multiplayer if connected
     if (multiplayer.isConnected) {
       multiplayer.sendMousePosition(newMousePos[0], newMousePos[1]);
     }
-  }, [multiplayer]);
+  }, [multiplayer, challenge]);
 
   useEffect(() => {
     if (initWebGL()) {
@@ -245,6 +293,22 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [autoCycle, multiplayer]);
 
+  // Particle system and challenge rotation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Update particles
+      setParticles(prev => prev.map(p => ({ ...p, life: p.life - 0.02 })).filter(p => p.life > 0));
+      
+      // Rotate challenges every 10 seconds
+      if (Math.random() < 0.1) {
+        setChallenge(challenges[Math.floor(Math.random() * challenges.length)]);
+        setChallengeProgress(0);
+      }
+    }, 100);
+    
+    return () => clearInterval(interval);
+  }, [challenges]);
+
   if (webglError) {
     return (
       <div className="error-panel">
@@ -262,8 +326,10 @@ const App: React.FC = () => {
       
       {/* Game Header */}
       <div className="game-header">
-        <div className="game-title">🎮</div>
+        <div className="game-title">🎮 SHADER ARENA</div>
         <div className="room-info">
+          <span className="score-display">⚡ {score}</span>
+          <span className="streak-display">🔥 {streak}</span>
           <span className="player-count">
             👥 {multiplayer.room?.playerCount || 1}
           </span>
@@ -274,10 +340,36 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* Shader Info Panel */}
+      {/* Challenge Panel */}
       <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>
-        <div className="shader-name">{currentShader + 1}</div>
+        <div className="shader-name">#{currentShader + 1} {NAMES[currentShader]}</div>
+        <div className="shader-challenge">🎯 {challenge}</div>
+        <div className="progress-bar">
+          <div 
+            className="progress-fill" 
+            style={{ width: `${challengeProgress * 100}%` }}
+          />
+        </div>
       </div>
+
+      {/* Particles */}
+      {particles.map((particle, i) => (
+        <div
+          key={i}
+          className="particle"
+          style={{
+            position: 'fixed',
+            left: `${(particle.x / (canvasRef.current?.width || 1)) * 100}%`,
+            top: `${(particle.y / (canvasRef.current?.height || 1)) * 100}%`,
+            opacity: particle.life,
+            transform: `scale(${particle.life})`,
+            pointerEvents: 'none',
+            zIndex: 1000
+          }}
+        >
+          ✨
+        </div>
+      ))}
 
       {/* Control Panel */}
       <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>

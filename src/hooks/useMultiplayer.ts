@@ -137,21 +137,23 @@ export function useMultiplayer() {
     console.log('🚀 Joining battle...', { playerName, connected: socketRef.current?.connected });
     
     if (!socketRef.current?.connected) {
+      setState(prev => ({ ...prev, connectionStatus: 'connecting' }));
       connect();
+      
       // Wait for connection then join the global room
       const retryJoin = () => {
         if (socketRef.current?.connected) {
           console.log('✅ Connected! Joining room...');
-          socketRef.current.emit('join-room', { roomId: 'GLOBAL', playerName });
+          socketRef.current.emit('join-room', { roomId: 'GLOBAL', playerName: playerName || 'Player' });
         } else {
           console.log('🔄 Still connecting... retrying...');
-          setTimeout(retryJoin, 500);
+          setTimeout(retryJoin, 200);
         }
       };
-      setTimeout(retryJoin, 1000);
+      setTimeout(retryJoin, 500);
     } else {
       console.log('✅ Already connected, joining room...');
-      socketRef.current.emit('join-room', { roomId: 'GLOBAL', playerName });
+      socketRef.current.emit('join-room', { roomId: 'GLOBAL', playerName: playerName || 'Player' });
     }
   }, [connect]);
 

@@ -38,11 +38,11 @@ float noise(vec2 p) {
 
 float fbm(vec2 p) {
   float value = 0.0;
-  float amplitude = 0.5;
-  for (int i = 0; i < 5; i++) {
+  float amplitude = 0.4;
+  for (int i = 0; i < 4; i++) {
     value += amplitude * noise(p);
-    p *= 2.0;
-    amplitude *= 0.5;
+    p *= 1.8;
+    amplitude *= 0.6;
   }
   return value;
 }
@@ -50,23 +50,30 @@ float fbm(vec2 p) {
 void main() {
   vec2 uv = v_uv;
   vec2 mouse = u_mouse / u_res;
+  vec2 center = vec2(0.5);
   
-  vec2 p = uv * 4.0 + u_time * 0.3;
-  p += (mouse - 0.5) * 2.0;
+  vec2 p = uv * 2.5 + u_time * 0.15;
+  p += (mouse - center) * 0.8;
   
-  float n1 = fbm(p + u_time * 0.1);
-  float n2 = fbm(p + vec2(100.0) + u_time * 0.15);
-  float n3 = fbm(p + vec2(200.0) + u_time * 0.2);
+  float n1 = fbm(p + u_time * 0.08);
+  float n2 = fbm(p + vec2(50.0) + u_time * 0.1);
   
-  vec3 color1 = vec3(0.2, 1.0, 0.8);
-  vec3 color2 = vec3(1.0, 0.2, 0.8);
-  vec3 color3 = vec3(0.8, 0.8, 0.2);
+  // Softer, more pleasant colors
+  vec3 color1 = vec3(0.3, 0.7, 0.9);  // Soft cyan
+  vec3 color2 = vec3(0.8, 0.4, 0.9);  // Soft purple
+  vec3 color3 = vec3(0.9, 0.8, 0.4);  // Warm yellow
   
-  vec3 col = color1 * n1 + color2 * n2 + color3 * n3;
-  col = pow(col, vec3(0.8));
+  float blend = sin(u_time * 0.5) * 0.5 + 0.5;
+  vec3 baseColor = mix(color1, color2, n1);
+  baseColor = mix(baseColor, color3, n2 * 0.5);
   
-  float glow = length(col);
-  col *= 1.0 + glow * 0.3;
+  // Gentler brightness modulation
+  float brightness = 0.6 + 0.3 * sin(length(uv - center) * 3.0 + u_time);
+  vec3 col = baseColor * brightness;
+  
+  // Soft vignette
+  float vignette = 1.0 - length(uv - center) * 0.5;
+  col *= vignette;
   
   fragColor = vec4(col, 1.0);
 }
@@ -90,36 +97,48 @@ void main() {
   vec2 uv = v_uv;
   vec2 mouse = u_mouse / u_res;
   
-  float time = floor(u_time * 8.0) / 8.0;
+  // Slower, more subtle time progression
+  float time = floor(u_time * 3.0) / 3.0;
   
-  vec2 blockSize = vec2(32.0, 18.0);
+  // Larger, less intense blocks
+  vec2 blockSize = vec2(16.0, 12.0);
   vec2 blockUV = floor(uv * blockSize) / blockSize;
   
-  float blockNoise = hash(blockUV.x + blockUV.y * 100.0 + time * 10.0);
+  float blockNoise = hash(blockUV.x + blockUV.y * 100.0 + time * 5.0);
   
+  // More subtle distortion
   vec2 distortion = vec2(0.0);
-  if (blockNoise > 0.7) {
-    distortion.x = (hash(blockUV.y + time) - 0.5) * 0.1;
-    distortion.y = (hash(blockUV.x + time * 1.3) - 0.5) * 0.05;
+  if (blockNoise > 0.85) {
+    distortion.x = (hash(blockUV.y + time) - 0.5) * 0.03;
+    distortion.y = (hash(blockUV.x + time * 1.3) - 0.5) * 0.02;
   }
   
-  distortion += (mouse - 0.5) * 0.05;
+  distortion += (mouse - 0.5) * 0.02;
   
-  vec2 uvR = uv + distortion + vec2(0.005, 0.0);
+  // Reduced chromatic aberration
+  vec2 uvR = uv + distortion + vec2(0.002, 0.0);
   vec2 uvG = uv + distortion;
-  vec2 uvB = uv + distortion - vec2(0.005, 0.0);
+  vec2 uvB = uv + distortion - vec2(0.002, 0.0);
   
-  float r = step(0.5, hash(floor(uvR * 200.0).x + floor(uvR * 200.0).y * 100.0 + time * 20.0));
-  float g = step(0.5, hash(floor(uvG * 200.0).x + floor(uvG * 200.0).y * 100.0 + time * 15.0));
-  float b = step(0.5, hash(floor(uvB * 200.0).x + floor(uvB * 200.0).y * 100.0 + time * 25.0));
+  // Create softer pattern with gradients instead of harsh blocks
+  float pattern = sin(uvG.x * 20.0 + time * 2.0) * sin(uvG.y * 15.0 + time * 1.5);
+  pattern = (pattern + 1.0) * 0.5;
   
-  vec3 col = vec3(r, g, b);
+  // Pleasant color palette
+  vec3 color1 = vec3(0.2, 0.6, 0.9);  // Soft blue
+  vec3 color2 = vec3(0.8, 0.3, 0.7);  // Soft pink
+  vec3 color3 = vec3(0.4, 0.9, 0.6);  // Soft green
   
-  float scanline = sin(uv.y * u_res.y * 2.0) * 0.1 + 0.9;
+  vec3 col = mix(color1, color2, pattern);
+  col = mix(col, color3, hash(blockUV.x + blockUV.y + time) * 0.3);
+  
+  // Gentle scanlines
+  float scanline = sin(uv.y * u_res.y * 1.0) * 0.05 + 0.95;
   col *= scanline;
   
-  if (blockNoise > 0.8) {
-    col = mix(col, vec3(1.0), 0.3);
+  // Subtle highlight on active blocks
+  if (blockNoise > 0.9) {
+    col = mix(col, vec3(1.0, 1.0, 0.9), 0.15);
   }
   
   fragColor = vec4(col, 1.0);
