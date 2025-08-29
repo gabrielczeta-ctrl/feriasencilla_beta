@@ -30,7 +30,7 @@ interface MultiplayerState {
 }
 
 // Using Railway public URL for the deployed server
-const SERVER_URL = 'wss://shader-battle-server-production.up.railway.app';
+const SERVER_URL = 'wss://feriasencillabeta-production.up.railway.app';
 
 export function useMultiplayer() {
   const [state, setState] = useState<MultiplayerState>({
