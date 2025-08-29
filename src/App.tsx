@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { VERT, SHADERS, NAMES } from './shaders';
+import { VERT, REACTIVE_ASCII_SHADER, NAMES } from './shaders';
 import { useMultiplayer } from './hooks/useMultiplayer';
 
 const App: React.FC = () => {
@@ -9,21 +9,16 @@ const App: React.FC = () => {
   const animationRef = useRef<number>(0);
   const mouseRef = useRef<[number, number]>([0, 0]);
   
-  const [currentShader, setCurrentShader] = useState(0);
   const [showHUD, setShowHUD] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
-  const [autoCycle] = useState(true);
+  const [asciiInput, setAsciiInput] = useState('');
   
   // Game state
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [challenge, setChallenge] = useState<string>('Move mouse to center');
-  const [challengeProgress, setChallengeProgress] = useState(0);
-  const [particles, setParticles] = useState<Array<{x: number, y: number, life: number}>>([]);
   
   // Multiplayer state
   const multiplayer = useMultiplayer();
-  const [isJoiningBattle, setIsJoiningBattle] = useState(false);
 
   // Auto-join multiplayer on app load
   useEffect(() => {
@@ -31,7 +26,7 @@ const App: React.FC = () => {
       if (!multiplayer.isConnected && multiplayer.connectionStatus === 'disconnected') {
         multiplayer.joinBattle('Player');
       }
-    }, 1000); // Give WebGL time to initialize first
+    }, 1000);
     
     return () => clearTimeout(timer);
   }, []);
@@ -94,7 +89,7 @@ const App: React.FC = () => {
     
     glRef.current = gl;
     
-    const program = createProgram(gl, VERT, SHADERS[currentShader]);
+    const program = createProgram(gl, VERT, REACTIVE_ASCII_SHADER);
     if (!program) {
       setWebglError('Failed to create shader program');
       return false;
@@ -119,26 +114,7 @@ const App: React.FC = () => {
     gl.useProgram(program);
     
     return true;
-  }, [createProgram, currentShader]);
-
-  const updateShader = useCallback(() => {
-    const gl = glRef.current;
-    if (!gl) return;
-    
-    const program = createProgram(gl, VERT, SHADERS[currentShader]);
-    if (!program) return;
-    
-    if (programRef.current) {
-      gl.deleteProgram(programRef.current);
-    }
-    
-    programRef.current = program;
-    gl.useProgram(program);
-    
-    const positionLocation = gl.getAttribLocation(program, 'a_position');
-    gl.enableVertexAttribArray(positionLocation);
-    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-  }, [createProgram, currentShader]);
+  }, [createProgram]);
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -167,6 +143,7 @@ const App: React.FC = () => {
     
     gl.clear(gl.COLOR_BUFFER_BIT);
     
+    // Set basic uniforms
     const timeUniform = gl.getUniformLocation(program, 'u_time');
     const resUniform = gl.getUniformLocation(program, 'u_res');
     const mouseUniform = gl.getUniformLocation(program, 'u_mouse');
@@ -175,43 +152,79 @@ const App: React.FC = () => {
     gl.uniform2f(resUniform, canvas.width, canvas.height);
     gl.uniform2f(mouseUniform, mouseRef.current[0], canvas.height - mouseRef.current[1]);
     
+    // Set ASCII character uniforms
+    const asciiChars = multiplayer.room?.asciiCharacters || [];
+    const activeAscii = asciiChars.filter(char => char.expiresAt > Date.now());
+    const maxAscii = Math.min(activeAscii.length, 50);
+    
+    // ASCII count
+    const asciiCountUniform = gl.getUniformLocation(program, 'u_asciiCount');
+    gl.uniform1f(asciiCountUniform, maxAscii);
+    
+    // ASCII positions array
+    const asciiPositions = new Float32Array(100); // 50 * 2 for vec2 array
+    const asciiAges = new Float32Array(50);
+    const asciiTypes = new Float32Array(50);
+    
+    for (let i = 0; i < maxAscii; i++) {
+      const char = activeAscii[i];
+      const age = (char.expiresAt - Date.now()) / 1000; // Age in seconds remaining
+      
+      asciiPositions[i * 2] = char.x;
+      asciiPositions[i * 2 + 1] = 1.0 - char.y; // Flip Y for WebGL
+      asciiAges[i] = Math.max(0, age);
+      asciiTypes[i] = char.asciiType;
+    }
+    
+    const asciiPositionsUniform = gl.getUniformLocation(program, 'u_asciiPositions');
+    const asciiAgesUniform = gl.getUniformLocation(program, 'u_asciiAges');
+    const asciiTypesUniform = gl.getUniformLocation(program, 'u_asciiTypes');
+    
+    gl.uniform2fv(asciiPositionsUniform, asciiPositions);
+    gl.uniform1fv(asciiAgesUniform, asciiAges);
+    gl.uniform1fv(asciiTypesUniform, asciiTypes);
+    
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     
     animationRef.current = requestAnimationFrame(render);
-  }, []);
+  }, [multiplayer.room?.asciiCharacters]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const key = e.key.toLowerCase();
+    e.preventDefault();
     
-    // Only allow HUD toggle - no manual shader switching in multiplayer
-    if (key === 'h') {
+    // Only allow HUD toggle universally
+    if (e.key.toLowerCase() === 'h') {
       setShowHUD((prev) => !prev);
+      return;
     }
     
-    // Visual interactions for current player
+    // ASCII input for current player
     if (multiplayer.isMyTurn && multiplayer.isConnected) {
       const canvas = canvasRef.current;
       if (!canvas) return;
       
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
+      let character = '';
       
-      if (key === ' ' || key === 'enter') {
-        multiplayer.sendVisualInteraction('pulse', centerX, centerY);
-      } else if (key >= '1' && key <= '8') {
-        multiplayer.sendVisualInteraction('number_press', centerX, centerY);
+      // Handle different key types
+      if (e.key.length === 1) {
+        character = e.key;
+      } else if (e.key === 'Space') {
+        character = ' ';
+      } else if (e.key === 'Enter') {
+        character = '\n';
+      }
+      
+      if (character) {
+        // Use mouse position, or center if mouse not moved
+        const x = mouseRef.current[0] || canvas.width / 2;
+        const y = mouseRef.current[1] || canvas.height / 2;
+        
+        multiplayer.sendAsciiInput(character, x, y);
+        setScore(prev => prev + 1);
+        setStreak(prev => prev + 1);
       }
     }
   }, [multiplayer]);
-
-  // Game challenges
-  const challenges = [
-    'Move mouse to center',
-    'Draw circles with your mouse',
-    'Keep mouse in corners for 3s',
-    'Trace the edges quickly',
-    'Make rapid movements'
-  ];
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const canvas = canvasRef.current;
@@ -227,43 +240,37 @@ const App: React.FC = () => {
     
     mouseRef.current = newMousePos;
     
-    // Game logic - check challenges
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const mouseX = newMousePos[0];
-    const mouseY = newMousePos[1];
-    
-    const distanceFromCenter = Math.sqrt((mouseX - centerX) ** 2 + (mouseY - centerY) ** 2);
-    const maxDistance = Math.sqrt(centerX ** 2 + centerY ** 2);
-    
-    // Update challenge progress based on current challenge
-    if (challenge.includes('center')) {
-      const progress = Math.max(0, 1 - (distanceFromCenter / (maxDistance * 0.3)));
-      setChallengeProgress(progress);
-      if (progress > 0.8) {
-        setScore(prev => prev + 1);
-        setStreak(prev => prev + 1);
-        // Add particle effect
-        setParticles(prev => [...prev, { x: mouseX, y: mouseY, life: 1.0 }]);
-      }
-    }
-    
     // Send to multiplayer if connected
     if (multiplayer.isConnected) {
       multiplayer.sendMousePosition(newMousePos[0], newMousePos[1]);
-      
-      // Send visual interactions if it's your turn
-      if (multiplayer.isMyTurn) {
-        // Trigger interaction based on mouse activity
-        const speed = Math.sqrt((mouseX - (mouseRef.current?.[0] || 0))**2 + (mouseY - (mouseRef.current?.[1] || 0))**2);
-        if (speed > 50) {
-          multiplayer.sendVisualInteraction('fast_movement', mouseX, mouseY);
-        } else if (distanceFromCenter < maxDistance * 0.1) {
-          multiplayer.sendVisualInteraction('center_hover', mouseX, mouseY);
-        }
-      }
     }
-  }, [multiplayer, challenge]);
+  }, [multiplayer]);
+
+  const handleMouseClick = useCallback((e: MouseEvent) => {
+    if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
+    
+    // If there's text in the input, send it
+    if (asciiInput.trim()) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      
+      const x = (e.clientX - rect.left) * dpr;
+      const y = (e.clientY - rect.top) * dpr;
+      
+      // Send each character
+      for (const char of asciiInput.trim()) {
+        setTimeout(() => {
+          multiplayer.sendAsciiInput(char, x + Math.random() * 20 - 10, y + Math.random() * 20 - 10);
+        }, Math.random() * 100);
+      }
+      
+      setAsciiInput('');
+      setScore(prev => prev + asciiInput.trim().length);
+    }
+  }, [multiplayer, asciiInput]);
 
   useEffect(() => {
     if (initWebGL()) {
@@ -279,59 +286,18 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    updateShader();
-  }, [currentShader, updateShader]);
-
-  useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('click', handleMouseClick);
     window.addEventListener('resize', resizeCanvas);
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('click', handleMouseClick);
       window.removeEventListener('resize', resizeCanvas);
     };
-  }, [handleKeyDown, handleMouseMove, resizeCanvas]);
-
-  // Sync shader changes from multiplayer
-  useEffect(() => {
-    if (multiplayer.room?.currentShader !== undefined && multiplayer.room.currentShader !== currentShader) {
-      console.log('🔄 Syncing shader from multiplayer:', multiplayer.room.currentShader);
-      setCurrentShader(multiplayer.room.currentShader);
-    }
-  }, [multiplayer.room?.currentShader, currentShader]);
-
-  // Auto-cycle only when NOT connected to multiplayer (server controls when connected)
-  useEffect(() => {
-    if (multiplayer.isConnected) return; // Server controls shaders in multiplayer
-    if (!autoCycle) return;
-    
-    const interval = setInterval(() => {
-      setCurrentShader((prev) => {
-        const nextShader = (prev + 1) % SHADERS.length;
-        return nextShader;
-      });
-    }, 15000); // 15 seconds for single player
-    
-    return () => clearInterval(interval);
-  }, [autoCycle, multiplayer.isConnected]);
-
-  // Particle system and challenge rotation
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Update particles
-      setParticles(prev => prev.map(p => ({ ...p, life: p.life - 0.02 })).filter(p => p.life > 0));
-      
-      // Rotate challenges every 10 seconds
-      if (Math.random() < 0.1) {
-        setChallenge(challenges[Math.floor(Math.random() * challenges.length)]);
-        setChallengeProgress(0);
-      }
-    }, 100);
-    
-    return () => clearInterval(interval);
-  }, [challenges]);
+  }, [handleKeyDown, handleMouseMove, handleMouseClick, resizeCanvas]);
 
   if (webglError) {
     return (
@@ -350,9 +316,9 @@ const App: React.FC = () => {
       
       {/* Game Header */}
       <div className="game-header">
-        <div className="game-title">🎮 SHADER ARENA</div>
+        <div className="game-title">🔤 ASCII REACTOR</div>
         <div className="room-info">
-          <span className="score-display">⚡ {score}</span>
+          <span className="score-display">✨ {score}</span>
           <span className="streak-display">🔥 {streak}</span>
           <span className="player-count">
             👥 {multiplayer.room?.playerCount || 1}
@@ -412,98 +378,55 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Challenge Panel */}
-      <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>
-        <div className="shader-name">#{currentShader + 1} {NAMES[currentShader]}</div>
-        <div className="shader-challenge">🎯 {challenge}</div>
-        <div className="progress-bar">
-          <div 
-            className="progress-fill" 
-            style={{ width: `${challengeProgress * 100}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Particles */}
-      {particles.map((particle, i) => (
-        <div
-          key={i}
-          className="particle"
-          style={{
-            position: 'fixed',
-            left: `${(particle.x / (canvasRef.current?.width || 1)) * 100}%`,
-            top: `${(particle.y / (canvasRef.current?.height || 1)) * 100}%`,
-            opacity: particle.life,
-            transform: `scale(${particle.life})`,
-            pointerEvents: 'none',
-            zIndex: 1000
-          }}
-        >
-          ✨
-        </div>
-      ))}
-
-      {/* Visual Interactions */}
-      {multiplayer.room?.visualInteractions?.map((interaction) => {
-        const age = Date.now() - interaction.timestamp;
-        const opacity = Math.max(0, 1 - (age / 3000)); // Fade over 3 seconds
-        if (opacity <= 0) return null;
+      {/* ASCII Characters Display */}
+      {multiplayer.room?.asciiCharacters?.map((char) => {
+        const age = Math.max(0, (char.expiresAt - Date.now()) / 10000); // 0-1
+        const opacity = age;
         
-        const getInteractionEmoji = (type: string) => {
-          switch (type) {
-            case 'fast_movement': return '💨';
-            case 'center_hover': return '🎯';
-            case 'pulse': return '💥';
-            case 'number_press': return '🔢';
-            default: return '✨';
-          }
-        };
+        if (opacity <= 0) return null;
         
         return (
           <div
-            key={`${interaction.playerId}-${interaction.timestamp}`}
-            className="visual-interaction"
+            key={char.id}
+            className="ascii-character"
             style={{
               position: 'fixed',
-              left: `${(interaction.x / (canvasRef.current?.width || 1)) * 100}%`,
-              top: `${(interaction.y / (canvasRef.current?.height || 1)) * 100}%`,
+              left: `${char.x * 100}%`,
+              top: `${char.y * 100}%`,
               opacity: opacity,
-              transform: `scale(${opacity}) translate(-50%, -50%)`,
+              transform: `translate(-50%, -50%) scale(${0.5 + opacity * 0.5})`,
               pointerEvents: 'none',
-              zIndex: 1001,
+              zIndex: 1000,
               fontSize: '24px',
-              filter: interaction.playerId === multiplayer.playerId ? 'drop-shadow(0 0 10px #00ff88)' : 'drop-shadow(0 0 10px #ff0088)'
+              color: char.playerId === multiplayer.playerId ? '#00ff88' : '#ff0088',
+              textShadow: '0 0 10px currentColor',
+              fontFamily: 'monospace',
+              fontWeight: 'bold'
             }}
           >
-            {getInteractionEmoji(interaction.interaction)}
+            {char.character}
           </div>
         );
       })}
 
-      {/* Control Panel - Automatic Shader Display */}
-      <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>
-        <div className="shader-display">
-          <div className="current-shader-info">
-            <div className="shader-preview">
-              {SHADERS.map((_, index) => (
-                <div
-                  key={index}
-                  className={`shader-indicator ${index === currentShader ? 'active' : ''}`}
-                  title={NAMES[index]}
-                >
-                  {index + 1}
-                </div>
-              ))}
-            </div>
-            <div className="shader-status">
-              {multiplayer.isConnected ? 
-                '🤖 Server Controlled' : 
-                '🔄 Auto Cycling'
-              }
-            </div>
-          </div>
+      {/* Challenge Panel */}
+      <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>
+        <div className="shader-name">🎨 {NAMES[0]}</div>
+        <div className="shader-challenge">
+          {multiplayer.isMyTurn ? 
+            '🔤 Type characters to influence the field!' : 
+            '👀 Watch the reactive ASCII field!'
+          }
         </div>
-        
+        {multiplayer.room?.asciiCharacters && (
+          <div className="ascii-stats">
+            Active characters: {multiplayer.room.asciiCharacters.filter(c => c.expiresAt > Date.now()).length}
+          </div>
+        )}
+      </div>
+
+      {/* Control Panel */}
+      <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>        
         <div className="game-controls">
           <button className="control-btn" onClick={() => setShowHUD(!showHUD)}>
             👁 {showHUD ? 'Hide' : 'Show'} UI
@@ -511,23 +434,55 @@ const App: React.FC = () => {
           {multiplayer.isMyTurn && (
             <div className="turn-controls">
               <span className="turn-indicator">🎮 Your Turn!</span>
-              <span className="interaction-hint">Move mouse & press keys</span>
+              <span className="interaction-hint">Type any key or click to add text</span>
             </div>
           )}
         </div>
+
+        {/* ASCII Input */}
+        {multiplayer.isMyTurn && (
+          <div className="ascii-input-section">
+            <input
+              type="text"
+              value={asciiInput}
+              onChange={(e) => setAsciiInput(e.target.value)}
+              placeholder="Type text and click to place..."
+              className="ascii-input"
+              maxLength={50}
+            />
+            <button 
+              onClick={() => {
+                const canvas = canvasRef.current;
+                if (!canvas || !asciiInput.trim()) return;
+                
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                for (const char of asciiInput.trim()) {
+                  setTimeout(() => {
+                    multiplayer.sendAsciiInput(char, centerX + Math.random() * 100 - 50, centerY + Math.random() * 100 - 50);
+                  }, Math.random() * 200);
+                }
+                
+                setAsciiInput('');
+              }}
+              className="ascii-send-btn"
+              disabled={!asciiInput.trim()}
+            >
+              🚀 Send
+            </button>
+          </div>
+        )}
 
         <div className="multiplayer-section">
           {!multiplayer.isConnected ? (
             <div className="join-battle-form">
               <button
-                onClick={() => {
-                  setIsJoiningBattle(true);
-                  multiplayer.joinBattle('Player');
-                }}
-                disabled={isJoiningBattle || multiplayer.connectionStatus === 'connecting'}
+                onClick={() => multiplayer.joinBattle('Player')}
+                disabled={multiplayer.connectionStatus === 'connecting'}
                 className="join-btn"
               >
-                {multiplayer.connectionStatus === 'connecting' ? '🟡' : '🚀'}
+                {multiplayer.connectionStatus === 'connecting' ? '🟡' : '🚀'} Join ASCII Battle
               </button>
             </div>
           ) : (
@@ -535,12 +490,11 @@ const App: React.FC = () => {
               onClick={multiplayer.disconnect}
               className="disconnect-btn"
             >
-              🔌
+              🔌 Disconnect
             </button>
           )}
         </div>
       </div>
-
     </>
   );
 };

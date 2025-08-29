@@ -28,6 +28,7 @@ class GameRoom {
     this.gameState = 'waiting'; // waiting, playing, finished, transitioning
     this.mousePositions = new Map();
     this.createdAt = new Date();
+    this.asciiCharacters = []; // Store active ASCII characters
     
     // WarioWare-style queue system
     this.queue = [];
@@ -35,6 +36,11 @@ class GameRoom {
     this.turnTimer = null;
     this.turnDuration = 45000; // 45 seconds per turn
     this.timeRemaining = 0;
+    
+    // Cleanup expired ASCII characters every second
+    this.asciiCleanupTimer = setInterval(() => {
+      this.cleanupExpiredAscii();
+    }, 1000);
   }
 
   addPlayer(playerId, playerName) {
@@ -85,6 +91,48 @@ class GameRoom {
     this.mousePositions.set(playerId, { x, y, timestamp: Date.now() });
   }
 
+  addAsciiCharacter(playerId, char, x, y) {
+    // Determine ASCII type based on character
+    let asciiType = 0.0;
+    if (/[a-zA-Z]/.test(char)) asciiType = Math.random() * 0.2; // Letters: 0-0.2
+    else if (/[0-9]/.test(char)) asciiType = 0.2 + Math.random() * 0.2; // Numbers: 0.2-0.4
+    else if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(char)) asciiType = 0.4 + Math.random() * 0.2; // Special: 0.4-0.6
+    else if (/[.,;:!?'""]/.test(char)) asciiType = 0.6 + Math.random() * 0.2; // Punctuation: 0.6-0.8
+    else asciiType = 0.8 + Math.random() * 0.2; // Symbols: 0.8-1.0
+
+    const asciiChar = {
+      id: `${playerId}-${Date.now()}-${Math.random()}`,
+      playerId,
+      character: char,
+      x: x / 1920, // Normalize to 0-1 range
+      y: y / 1080, // Normalize to 0-1 range
+      asciiType,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 10000 // 10 seconds lifespan
+    };
+
+    this.asciiCharacters.push(asciiChar);
+    
+    // Limit total ASCII characters to prevent memory issues
+    if (this.asciiCharacters.length > 100) {
+      this.asciiCharacters = this.asciiCharacters.slice(-100);
+    }
+
+    console.log(`✨ ASCII '${char}' added by ${playerId} at (${x}, ${y})`);
+    return asciiChar;
+  }
+
+  cleanupExpiredAscii() {
+    const now = Date.now();
+    const initialCount = this.asciiCharacters.length;
+    this.asciiCharacters = this.asciiCharacters.filter(char => char.expiresAt > now);
+    
+    if (this.asciiCharacters.length < initialCount) {
+      console.log(`🧹 Cleaned up ${initialCount - this.asciiCharacters.length} expired ASCII characters`);
+      this.broadcastAsciiUpdate();
+    }
+  }
+
   startNextTurn() {
     if (this.queue.length === 0) {
       this.gameState = 'waiting';
@@ -96,8 +144,8 @@ class GameRoom {
     this.currentPlayer = this.queue.shift();
     this.queue.push(this.currentPlayer); // Add back to end of queue
     
-    // Pick random shader for this turn - use all 8 shaders
-    this.currentShader = Math.floor(Math.random() * 8);
+    // Always use the single reactive shader
+    this.currentShader = 0;
     
     this.gameState = 'playing';
     this.timeRemaining = this.turnDuration / 1000; // Convert to seconds
@@ -116,11 +164,7 @@ class GameRoom {
     this.turnTimer = setInterval(() => {
       this.timeRemaining -= 1;
       
-      // Add shader transitions during the turn (every 10-15 seconds)
-      if (this.timeRemaining > 0 && (this.timeRemaining === 30 || this.timeRemaining === 15)) {
-        this.currentShader = Math.floor(Math.random() * 8);
-        console.log(`🎨 Automatic shader transition to ${this.currentShader} for ${this.currentPlayer}`);
-      }
+      // No shader transitions - always use reactive ASCII shader
       
       // Broadcast timer updates every second
       this.broadcastGameState();
@@ -144,6 +188,14 @@ class GameRoom {
     }
   }
 
+  broadcastAsciiUpdate() {
+    if (this.io && this.id) {
+      this.io.to(this.id).emit('ascii-update', {
+        asciiCharacters: this.asciiCharacters
+      });
+    }
+  }
+
   setSocketIO(io) {
     this.io = io;
   }
@@ -158,7 +210,8 @@ class GameRoom {
       mousePositions: Object.fromEntries(this.mousePositions),
       currentPlayer: this.currentPlayer,
       queue: this.queue,
-      timeRemaining: this.timeRemaining
+      timeRemaining: this.timeRemaining,
+      asciiCharacters: this.asciiCharacters
     };
   }
 }
@@ -238,27 +291,35 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Handle visual interaction (only current player can interact)
-  socket.on('visual-interaction', (data) => {
+  // Handle ASCII input (only current player can input)
+  socket.on('ascii-input', (data) => {
     const session = playerSessions.get(socket.id);
     if (!session) return;
     
     const room = rooms.get(session.roomId);
     if (!room || room.currentPlayer !== socket.id) {
-      // Only current player can make visual interactions
+      // Only current player can input ASCII
       return;
     }
     
-    // Broadcast visual interaction to all players
-    io.to(session.roomId).emit('player-visual-interaction', {
-      playerId: socket.id,
-      interaction: data.interaction,
-      x: data.x,
-      y: data.y,
-      timestamp: Date.now()
+    const { character, x, y } = data;
+    
+    // Validate input
+    if (!character || character.length !== 1) {
+      return;
+    }
+    
+    // Add ASCII character to room
+    const asciiChar = room.addAsciiCharacter(socket.id, character, x, y);
+    
+    // Broadcast to all players
+    io.to(session.roomId).emit('ascii-added', {
+      asciiChar: asciiChar,
+      addedBy: socket.id
     });
     
-    console.log(`✨ Visual interaction by ${socket.id}: ${data.interaction}`);
+    // Broadcast full ASCII update
+    room.broadcastAsciiUpdate();
   });
   
   // Handle disconnection

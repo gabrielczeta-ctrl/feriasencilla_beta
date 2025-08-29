@@ -11,6 +11,17 @@ interface Player {
   isActive: boolean;
 }
 
+interface AsciiCharacter {
+  id: string;
+  playerId: string;
+  character: string;
+  x: number;
+  y: number;
+  asciiType: number;
+  createdAt: number;
+  expiresAt: number;
+}
+
 interface Room {
   id: string;
   playerCount: number;
@@ -21,7 +32,7 @@ interface Room {
   currentPlayer?: string;
   queue?: string[];
   timeRemaining?: number;
-  visualInteractions?: Array<{ playerId: string; interaction: string; x: number; y: number; timestamp: number }>;
+  asciiCharacters?: AsciiCharacter[];
 }
 
 interface MultiplayerState {
@@ -173,24 +184,20 @@ export function useMultiplayer() {
       });
     });
 
-    socket.on('player-visual-interaction', (data: { playerId: string; interaction: string; x: number; y: number; timestamp: number }) => {
-      console.log('✨ Visual interaction received:', data);
+    socket.on('ascii-added', (data: { asciiChar: AsciiCharacter; addedBy: string }) => {
+      console.log('🔤 ASCII character added:', data.asciiChar.character, 'by', data.addedBy);
+    });
+
+    socket.on('ascii-update', (data: { asciiCharacters: AsciiCharacter[] }) => {
+      console.log('📝 ASCII update received:', data.asciiCharacters.length, 'characters');
       setState(prev => {
         if (!prev.room) return prev;
-        
-        const newInteraction = { 
-          playerId: data.playerId, 
-          interaction: data.interaction, 
-          x: data.x, 
-          y: data.y, 
-          timestamp: data.timestamp 
-        };
         
         return {
           ...prev,
           room: {
             ...prev.room,
-            visualInteractions: [...(prev.room.visualInteractions || []), newInteraction].slice(-20) // Keep last 20 interactions
+            asciiCharacters: data.asciiCharacters
           }
         };
       });
@@ -245,14 +252,18 @@ export function useMultiplayer() {
     }
   }, []);
 
-  // Send visual interaction (only if it's your turn)
-  const sendVisualInteraction = useCallback((interaction: string, x: number, y: number) => {
+  // Send ASCII character (only if it's your turn)
+  const sendAsciiInput = useCallback((character: string, x: number, y: number) => {
     if (!socketRef.current?.connected) return;
     if (!state.isMyTurn) {
-      console.log('🚫 Not your turn - visual interaction blocked');
+      console.log('🚫 Not your turn - ASCII input blocked');
       return;
     }
-    socketRef.current.emit('visual-interaction', { interaction, x, y });
+    if (!character || character.length !== 1) {
+      console.log('🚫 Invalid character - must be single character');
+      return;
+    }
+    socketRef.current.emit('ascii-input', { character, x, y });
   }, [state.isMyTurn]);
 
   // Disconnect
@@ -282,7 +293,7 @@ export function useMultiplayer() {
     connect,
     joinBattle,
     sendMousePosition,
-    sendVisualInteraction,
+    sendAsciiInput,
     disconnect
   };
 }
