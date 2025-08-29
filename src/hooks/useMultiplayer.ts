@@ -29,8 +29,8 @@ interface MultiplayerState {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
 }
 
-// Using Railway public URL for the deployed server
-const SERVER_URL = 'wss://feriasencillabeta-production.up.railway.app';
+// Using local network IP for testing (Railway deployed wrong files)
+const SERVER_URL = 'ws://192.168.1.91:3001';
 
 export function useMultiplayer() {
   const [state, setState] = useState<MultiplayerState>({
