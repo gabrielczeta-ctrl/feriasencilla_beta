@@ -79,6 +79,298 @@
       text-align: center;
       box-shadow: 0 0 20px rgba(255, 68, 68, 0.3);
     }
+
+    /* Game UI Styles */
+    .game-header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent);
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 200;
+    }
+
+    .game-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00ff88;
+      text-shadow: 0 0 6px rgba(0, 255, 136, 0.8);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .room-info {
+      display: flex;
+      gap: 20px;
+      font-size: 12px;
+      color: #00ff88;
+    }
+
+    .room-id, .player-count {
+      background: rgba(0, 255, 136, 0.1);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(0, 255, 136, 0.3);
+    }
+
+    .shader-panel {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      border: 1px solid #00ff88;
+      border-radius: 8px;
+      padding: 15px;
+      max-width: 300px;
+      z-index: 150;
+      transition: opacity 0.3s ease;
+    }
+
+    .shader-name {
+      font-size: 16px;
+      font-weight: bold;
+      color: #00ff88;
+      margin-bottom: 8px;
+    }
+
+    .shader-challenge {
+      font-size: 12px;
+      color: #88ffaa;
+      opacity: 0.8;
+    }
+
+    .control-panel {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      border: 1px solid #00ff88;
+      border-radius: 12px;
+      padding: 20px;
+      min-width: 600px;
+      z-index: 150;
+      transition: opacity 0.3s ease;
+    }
+
+    .shader-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+      justify-content: center;
+    }
+
+    .shader-btn {
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid rgba(0, 255, 136, 0.5);
+      color: #00ff88;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .shader-btn:hover {
+      background: rgba(0, 255, 136, 0.2);
+      border-color: #00ff88;
+      box-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+    }
+
+    .shader-btn.active {
+      background: #00ff88;
+      color: #000;
+      border-color: #00ff88;
+      box-shadow: 0 0 12px rgba(0, 255, 136, 0.6);
+    }
+
+    .game-controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      justify-content: center;
+    }
+
+    .control-btn {
+      background: linear-gradient(45deg, rgba(0, 255, 136, 0.2), rgba(0, 255, 136, 0.1));
+      border: 1px solid rgba(0, 255, 136, 0.6);
+      color: #00ff88;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: bold;
+    }
+
+    .control-btn:hover {
+      background: linear-gradient(45deg, rgba(0, 255, 136, 0.3), rgba(0, 255, 136, 0.2));
+      box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .multiplayer-status {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+    }
+
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .status-label {
+      font-size: 10px;
+      color: #88ffaa;
+      opacity: 0.7;
+    }
+
+    .status-value {
+      font-size: 11px;
+      color: #00ff88;
+      font-weight: bold;
+    }
+
+    .legacy-controls {
+      position: fixed;
+      top: 50%;
+      right: 20px;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(0, 255, 136, 0.3);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 10px;
+      color: #88ffaa;
+      opacity: 0.6;
+      max-width: 200px;
+      z-index: 100;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Multiplayer UI Styles */
+    .connection-status {
+      font-size: 10px !important;
+      padding: 2px 6px !important;
+    }
+
+    .connection-status.connected {
+      color: #00ff88 !important;
+    }
+
+    .connection-status.connecting {
+      color: #ffaa00 !important;
+    }
+
+    .connection-status.disconnected {
+      color: #ff4444 !important;
+    }
+
+    .multiplayer-section {
+      border-top: 1px solid rgba(0, 255, 136, 0.3);
+      padding-top: 15px;
+      margin-top: 15px;
+    }
+
+    .join-room-form h3 {
+      color: #00ff88;
+      font-size: 14px;
+      margin: 0 0 10px 0;
+      text-align: center;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .name-input, .room-input {
+      background: rgba(0, 255, 136, 0.1);
+      border: 1px solid rgba(0, 255, 136, 0.5);
+      color: #00ff88;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: inherit;
+      min-width: 120px;
+      max-width: 150px;
+    }
+
+    .name-input::placeholder, .room-input::placeholder {
+      color: rgba(0, 255, 136, 0.6);
+      opacity: 1;
+    }
+
+    .name-input:focus, .room-input:focus {
+      outline: none;
+      border-color: #00ff88;
+      box-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+      background: rgba(0, 255, 136, 0.15);
+    }
+
+    .join-btn, .disconnect-btn {
+      background: linear-gradient(45deg, #00ff88, #00cc66);
+      border: none;
+      color: #000;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-family: inherit;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+    }
+
+    .join-btn:hover, .disconnect-btn:hover {
+      box-shadow: 0 0 12px rgba(0, 255, 136, 0.6);
+      transform: translateY(-1px);
+    }
+
+    .join-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .disconnect-btn {
+      background: linear-gradient(45deg, #ff4444, #cc2222);
+      color: white;
+      font-size: 10px;
+      padding: 6px 10px;
+      margin-top: 8px;
+    }
+
+    .multiplayer-status {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .status-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 80px;
+    }
   </style>
 </head>
 <body>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { VERT, SHADERS, NAMES } from './shaders';
+import { useMultiplayer } from './hooks/useMultiplayer';
 
 const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -11,6 +12,12 @@ const App: React.FC = () => {
   const [currentShader, setCurrentShader] = useState(0);
   const [showHUD, setShowHUD] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
+  
+  // Multiplayer state
+  const multiplayer = useMultiplayer();
+  const [playerName, setPlayerName] = useState('');
+  const [roomId, setRoomId] = useState('');
+  const [isJoiningRoom, setIsJoiningRoom] = useState(false);
 
   const compileShader = useCallback((gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null => {
     const shader = gl.createShader(type);
@@ -180,11 +187,18 @@ const App: React.FC = () => {
     const rect = canvas.getBoundingClientRect();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     
-    mouseRef.current = [
+    const newMousePos: [number, number] = [
       (e.clientX - rect.left) * dpr,
       (e.clientY - rect.top) * dpr
     ];
-  }, []);
+    
+    mouseRef.current = newMousePos;
+    
+    // Send to multiplayer if connected
+    if (multiplayer.isConnected) {
+      multiplayer.sendMousePosition(newMousePos[0], newMousePos[1]);
+    }
+  }, [multiplayer]);
 
   useEffect(() => {
     if (initWebGL()) {
@@ -229,11 +243,122 @@ const App: React.FC = () => {
   return (
     <>
       <canvas ref={canvasRef} />
-      <div className={`hud shader-name ${!showHUD ? 'hidden' : ''}`}>
-        {NAMES[currentShader]}
+      
+      {/* Game Header */}
+      <div className="game-header">
+        <div className="game-title">🎮 SHADER BATTLE ARENA</div>
+        <div className="room-info">
+          <span className="room-id">
+            Room: #{multiplayer.room?.id || 'SOLO'}
+          </span>
+          <span className="player-count">
+            👥 {multiplayer.room?.playerCount || 1} Player{(multiplayer.room?.playerCount || 1) > 1 ? 's' : ''}
+          </span>
+          <span className={`connection-status ${multiplayer.connectionStatus}`}>
+            {multiplayer.connectionStatus === 'connected' ? '🟢' : 
+             multiplayer.connectionStatus === 'connecting' ? '🟡' : '🔴'} 
+            {multiplayer.connectionStatus}
+          </span>
+        </div>
       </div>
-      <div className={`hud controls ${!showHUD ? 'hidden' : ''}`}>
-        1–4 shaders • N/P next/prev • mouse=distort • H hide
+
+      {/* Shader Info Panel */}
+      <div className={`shader-panel ${!showHUD ? 'hidden' : ''}`}>
+        <div className="shader-name">{NAMES[currentShader]}</div>
+        <div className="shader-challenge">Move your mouse to distort reality!</div>
+      </div>
+
+      {/* Control Panel */}
+      <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>
+        <div className="shader-selector">
+          {NAMES.map((name, index) => (
+            <button
+              key={index}
+              className={`shader-btn ${index === currentShader ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentShader(index);
+                if (multiplayer.isConnected) {
+                  multiplayer.changeShader(index);
+                }
+              }}
+            >
+              {index + 1}. {name}
+            </button>
+          ))}
+        </div>
+        
+        <div className="game-controls">
+          <button className="control-btn" onClick={() => setCurrentShader((prev) => (prev - 1 + SHADERS.length) % SHADERS.length)}>
+            ⏮ Previous
+          </button>
+          <button className="control-btn" onClick={() => setShowHUD(!showHUD)}>
+            👁 {showHUD ? 'Hide' : 'Show'} UI
+          </button>
+          <button className="control-btn" onClick={() => setCurrentShader((prev) => (prev + 1) % SHADERS.length)}>
+            ⏭ Next
+          </button>
+        </div>
+
+        <div className="multiplayer-section">
+          {!multiplayer.isConnected ? (
+            <div className="join-room-form">
+              <h3>🌐 Join Multiplayer Battle!</h3>
+              <div className="form-row">
+                <input
+                  type="text"
+                  placeholder="Your name (optional)"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  className="name-input"
+                />
+                <input
+                  type="text"
+                  placeholder="Room ID (leave empty for new room)"
+                  value={roomId}
+                  onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                  className="room-input"
+                />
+                <button
+                  onClick={() => {
+                    setIsJoiningRoom(true);
+                    multiplayer.joinRoom(roomId || undefined, playerName || undefined);
+                  }}
+                  disabled={isJoiningRoom}
+                  className="join-btn"
+                >
+                  {isJoiningRoom ? '🔄 Connecting...' : '🚀 Join Battle'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="multiplayer-status">
+              <div className="status-item">
+                <span className="status-label">You:</span>
+                <span className="status-value">{multiplayer.playerName} 🟢</span>
+              </div>
+              <div className="status-item">
+                <span className="status-label">Other Players:</span>
+                <span className="status-value">
+                  {multiplayer.otherPlayers.length > 0 
+                    ? multiplayer.otherPlayers.map(p => p.name).join(', ')
+                    : 'Waiting for players... 👥'
+                  }
+                </span>
+              </div>
+              <button
+                onClick={multiplayer.disconnect}
+                className="disconnect-btn"
+              >
+                🔌 Leave Room
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Legacy keyboard controls hint */}
+      <div className={`legacy-controls ${!showHUD ? 'hidden' : ''}`}>
+        💡 Keyboard: 1-4 shaders • N/P next/prev • H hide UI
       </div>
     </>
   );
