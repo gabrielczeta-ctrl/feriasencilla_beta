@@ -30,9 +30,9 @@ interface MultiplayerState {
 }
 
 // Server configuration - auto-detect environment
-const SERVER_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://feriasencillabeta-production.up.railway.app'
-  : 'http://localhost:3001';
+const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:3001'
+  : 'https://feriasencillabeta-production.up.railway.app';
 
 export function useMultiplayer() {
   const [state, setState] = useState<MultiplayerState>({
@@ -72,7 +72,7 @@ export function useMultiplayer() {
       }));
     });
 
-    socket.on('connect_error', (error) => {
+    socket.on('connect_error', (error: Error) => {
       console.error('🔴 Connection error:', error);
       setState(prev => ({ 
         ...prev, 
@@ -81,7 +81,7 @@ export function useMultiplayer() {
       }));
     });
 
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', (reason: string) => {
       console.log('🔴 Disconnected from server:', reason);
       setState(prev => ({ 
         ...prev, 
