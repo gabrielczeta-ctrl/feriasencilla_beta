@@ -28,7 +28,7 @@ class GameRoom {
     this.gameState = 'waiting'; // waiting, playing, finished, transitioning
     this.mousePositions = new Map();
     this.createdAt = new Date();
-    this.asciiCharacters = []; // Store active ASCII characters
+    this.widgets = []; // Store active widgets
     
     // WarioWare-style queue system
     this.queue = [];
@@ -37,10 +37,15 @@ class GameRoom {
     this.turnDuration = 45000; // 45 seconds per turn
     this.timeRemaining = 0;
     
-    // Cleanup expired ASCII characters every second
-    this.asciiCleanupTimer = setInterval(() => {
-      this.cleanupExpiredAscii();
+    // Cleanup expired widgets every second
+    this.widgetCleanupTimer = setInterval(() => {
+      this.cleanupExpiredWidgets();
     }, 1000);
+    
+    // Update widget physics every 60ms (~60fps)
+    this.widgetPhysicsTimer = setInterval(() => {
+      this.updateWidgetPhysics();
+    }, 16);
   }
 
   addPlayer(playerId, playerName) {
@@ -91,45 +96,79 @@ class GameRoom {
     this.mousePositions.set(playerId, { x, y, timestamp: Date.now() });
   }
 
-  addAsciiCharacter(playerId, char, x, y) {
-    // Determine ASCII type based on character
-    let asciiType = 0.0;
-    if (/[a-zA-Z]/.test(char)) asciiType = Math.random() * 0.2; // Letters: 0-0.2
-    else if (/[0-9]/.test(char)) asciiType = 0.2 + Math.random() * 0.2; // Numbers: 0.2-0.4
-    else if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(char)) asciiType = 0.4 + Math.random() * 0.2; // Special: 0.4-0.6
-    else if (/[.,;:!?'""]/.test(char)) asciiType = 0.6 + Math.random() * 0.2; // Punctuation: 0.6-0.8
-    else asciiType = 0.8 + Math.random() * 0.2; // Symbols: 0.8-1.0
-
-    const asciiChar = {
+  addWidget(playerId, message, x, y) {
+    // Normalize coordinates to 0-1 range
+    const normalizedX = x / 1920;
+    const normalizedY = y / 1080;
+    
+    const widget = {
       id: `${playerId}-${Date.now()}-${Math.random()}`,
       playerId,
-      character: char,
-      x: x / 1920, // Normalize to 0-1 range
-      y: y / 1080, // Normalize to 0-1 range
-      asciiType,
+      message: message || '✨',
+      x: normalizedX,
+      y: normalizedY,
+      vx: (Math.random() - 0.5) * 0.0005, // Random velocity
+      vy: (Math.random() - 0.5) * 0.0005,
+      widgetType: Math.random(), // 0-1 for different colors/styles
       createdAt: Date.now(),
-      expiresAt: Date.now() + 10000 // 10 seconds lifespan
+      expiresAt: Date.now() + 15000, // 15 seconds lifespan
+      bounce: 0.8, // Bounce factor
+      size: 0.8 + Math.random() * 0.4 // Size variation
     };
 
-    this.asciiCharacters.push(asciiChar);
+    this.widgets.push(widget);
     
-    // Limit total ASCII characters to prevent memory issues
-    if (this.asciiCharacters.length > 100) {
-      this.asciiCharacters = this.asciiCharacters.slice(-100);
+    // Limit total widgets to prevent memory issues
+    if (this.widgets.length > 50) {
+      this.widgets = this.widgets.slice(-50);
     }
 
-    console.log(`✨ ASCII '${char}' added by ${playerId} at (${x}, ${y})`);
-    return asciiChar;
+    console.log(`🎮 Widget '${message}' added by ${playerId} at (${x}, ${y})`);
+    return widget;
   }
 
-  cleanupExpiredAscii() {
+  cleanupExpiredWidgets() {
     const now = Date.now();
-    const initialCount = this.asciiCharacters.length;
-    this.asciiCharacters = this.asciiCharacters.filter(char => char.expiresAt > now);
+    const initialCount = this.widgets.length;
+    this.widgets = this.widgets.filter(widget => widget.expiresAt > now);
     
-    if (this.asciiCharacters.length < initialCount) {
-      console.log(`🧹 Cleaned up ${initialCount - this.asciiCharacters.length} expired ASCII characters`);
-      this.broadcastAsciiUpdate();
+    if (this.widgets.length < initialCount) {
+      console.log(`🧹 Cleaned up ${initialCount - this.widgets.length} expired widgets`);
+      this.broadcastWidgetUpdate();
+    }
+  }
+  
+  updateWidgetPhysics() {
+    let updated = false;
+    
+    for (const widget of this.widgets) {
+      // Update position
+      widget.x += widget.vx;
+      widget.y += widget.vy;
+      
+      // Bounce off edges
+      if (widget.x <= 0 || widget.x >= 1) {
+        widget.vx *= -widget.bounce;
+        widget.x = Math.max(0, Math.min(1, widget.x));
+        updated = true;
+      }
+      if (widget.y <= 0 || widget.y >= 1) {
+        widget.vy *= -widget.bounce;
+        widget.y = Math.max(0, Math.min(1, widget.y));
+        updated = true;
+      }
+      
+      // Add some gravity
+      widget.vy += 0.00001;
+      
+      // Slight air resistance
+      widget.vx *= 0.999;
+      widget.vy *= 0.999;
+    }
+    
+    // Only broadcast if widgets actually moved significantly
+    if (updated && this.widgets.length > 0 && Math.random() < 0.1) { // Throttle updates
+      this.broadcastWidgetUpdate();
     }
   }
 
@@ -188,10 +227,10 @@ class GameRoom {
     }
   }
 
-  broadcastAsciiUpdate() {
+  broadcastWidgetUpdate() {
     if (this.io && this.id) {
-      this.io.to(this.id).emit('ascii-update', {
-        asciiCharacters: this.asciiCharacters
+      this.io.to(this.id).emit('widget-update', {
+        widgets: this.widgets
       });
     }
   }
@@ -211,7 +250,7 @@ class GameRoom {
       currentPlayer: this.currentPlayer,
       queue: this.queue,
       timeRemaining: this.timeRemaining,
-      asciiCharacters: this.asciiCharacters
+      widgets: this.widgets
     };
   }
 }
@@ -291,35 +330,35 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Handle ASCII input (only current player can input)
-  socket.on('ascii-input', (data) => {
+  // Handle widget creation (only current player can create)
+  socket.on('create-widget', (data) => {
     const session = playerSessions.get(socket.id);
     if (!session) return;
     
     const room = rooms.get(session.roomId);
     if (!room || room.currentPlayer !== socket.id) {
-      // Only current player can input ASCII
+      // Only current player can create widgets
       return;
     }
     
-    const { character, x, y } = data;
+    const { message, x, y } = data;
     
     // Validate input
-    if (!character || character.length !== 1) {
+    if (!message || message.length > 50) {
       return;
     }
     
-    // Add ASCII character to room
-    const asciiChar = room.addAsciiCharacter(socket.id, character, x, y);
+    // Add widget to room
+    const widget = room.addWidget(socket.id, message, x, y);
     
     // Broadcast to all players
-    io.to(session.roomId).emit('ascii-added', {
-      asciiChar: asciiChar,
+    io.to(session.roomId).emit('widget-added', {
+      widget: widget,
       addedBy: socket.id
     });
     
-    // Broadcast full ASCII update
-    room.broadcastAsciiUpdate();
+    // Broadcast full widget update
+    room.broadcastWidgetUpdate();
   });
   
   // Handle disconnection

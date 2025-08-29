@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { VERT, REACTIVE_ASCII_SHADER, NAMES } from './shaders';
+import { VERT, OPTIMIZED_WIDGET_SHADER, NAMES } from './shaders';
 import { useMultiplayer } from './hooks/useMultiplayer';
 
 const App: React.FC = () => {
@@ -11,11 +11,12 @@ const App: React.FC = () => {
   
   const [showHUD, setShowHUD] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
-  const [asciiInput, setAsciiInput] = useState('');
+  const [isWritingMessage, setIsWritingMessage] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState('');
+  const [clickPosition, setClickPosition] = useState<[number, number] | null>(null);
   
   // Game state
   const [score, setScore] = useState(0);
-  const [streak, setStreak] = useState(0);
   
   // Multiplayer state
   const multiplayer = useMultiplayer();
@@ -89,7 +90,7 @@ const App: React.FC = () => {
     
     glRef.current = gl;
     
-    const program = createProgram(gl, VERT, REACTIVE_ASCII_SHADER);
+    const program = createProgram(gl, VERT, OPTIMIZED_WIDGET_SHADER);
     if (!program) {
       setWebglError('Failed to create shader program');
       return false;
@@ -152,79 +153,67 @@ const App: React.FC = () => {
     gl.uniform2f(resUniform, canvas.width, canvas.height);
     gl.uniform2f(mouseUniform, mouseRef.current[0], canvas.height - mouseRef.current[1]);
     
-    // Set ASCII character uniforms
-    const asciiChars = multiplayer.room?.asciiCharacters || [];
-    const activeAscii = asciiChars.filter(char => char.expiresAt > Date.now());
-    const maxAscii = Math.min(activeAscii.length, 50);
+    // Set widget uniforms
+    const widgets = multiplayer.room?.widgets || [];
+    const activeWidgets = widgets.filter(widget => widget.expiresAt > Date.now());
+    const maxWidgets = Math.min(activeWidgets.length, 20);
     
-    // ASCII count
-    const asciiCountUniform = gl.getUniformLocation(program, 'u_asciiCount');
-    gl.uniform1f(asciiCountUniform, maxAscii);
+    // Widget count
+    const widgetCountUniform = gl.getUniformLocation(program, 'u_widgetCount');
+    gl.uniform1f(widgetCountUniform, maxWidgets);
     
-    // ASCII positions array
-    const asciiPositions = new Float32Array(100); // 50 * 2 for vec2 array
-    const asciiAges = new Float32Array(50);
-    const asciiTypes = new Float32Array(50);
+    // Widget arrays
+    const widgetPositions = new Float32Array(40); // 20 * 2 for vec2 array
+    const widgetAges = new Float32Array(20);
+    const widgetTypes = new Float32Array(20);
     
-    for (let i = 0; i < maxAscii; i++) {
-      const char = activeAscii[i];
-      const age = (char.expiresAt - Date.now()) / 1000; // Age in seconds remaining
+    for (let i = 0; i < maxWidgets; i++) {
+      const widget = activeWidgets[i];
+      const age = Math.max(0, (widget.expiresAt - Date.now()) / 15000); // Normalize age 0-1
       
-      asciiPositions[i * 2] = char.x;
-      asciiPositions[i * 2 + 1] = 1.0 - char.y; // Flip Y for WebGL
-      asciiAges[i] = Math.max(0, age);
-      asciiTypes[i] = char.asciiType;
+      widgetPositions[i * 2] = widget.x;
+      widgetPositions[i * 2 + 1] = widget.y;
+      widgetAges[i] = age;
+      widgetTypes[i] = widget.widgetType;
     }
     
-    const asciiPositionsUniform = gl.getUniformLocation(program, 'u_asciiPositions');
-    const asciiAgesUniform = gl.getUniformLocation(program, 'u_asciiAges');
-    const asciiTypesUniform = gl.getUniformLocation(program, 'u_asciiTypes');
+    const widgetPositionsUniform = gl.getUniformLocation(program, 'u_widgetPositions');
+    const widgetAgesUniform = gl.getUniformLocation(program, 'u_widgetAges');
+    const widgetTypesUniform = gl.getUniformLocation(program, 'u_widgetTypes');
     
-    gl.uniform2fv(asciiPositionsUniform, asciiPositions);
-    gl.uniform1fv(asciiAgesUniform, asciiAges);
-    gl.uniform1fv(asciiTypesUniform, asciiTypes);
+    gl.uniform2fv(widgetPositionsUniform, widgetPositions);
+    gl.uniform1fv(widgetAgesUniform, widgetAges);
+    gl.uniform1fv(widgetTypesUniform, widgetTypes);
     
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     
     animationRef.current = requestAnimationFrame(render);
-  }, [multiplayer.room?.asciiCharacters]);
+  }, [multiplayer.room?.widgets]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    e.preventDefault();
-    
-    // Only allow HUD toggle universally
+    // Only allow HUD toggle
     if (e.key.toLowerCase() === 'h') {
       setShowHUD((prev) => !prev);
-      return;
+      e.preventDefault();
     }
     
-    // ASCII input for current player
-    if (multiplayer.isMyTurn && multiplayer.isConnected) {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      
-      let character = '';
-      
-      // Handle different key types
-      if (e.key.length === 1) {
-        character = e.key;
-      } else if (e.key === 'Space') {
-        character = ' ';
-      } else if (e.key === 'Enter') {
-        character = '\n';
-      }
-      
-      if (character) {
-        // Use mouse position, or center if mouse not moved
-        const x = mouseRef.current[0] || canvas.width / 2;
-        const y = mouseRef.current[1] || canvas.height / 2;
-        
-        multiplayer.sendAsciiInput(character, x, y);
+    // Handle input for message writing
+    if (isWritingMessage && e.key === 'Enter') {
+      e.preventDefault();
+      if (pendingMessage.trim() && clickPosition) {
+        multiplayer.sendWidgetMessage(pendingMessage.trim(), clickPosition[0], clickPosition[1]);
         setScore(prev => prev + 1);
-        setStreak(prev => prev + 1);
+        setPendingMessage('');
+        setIsWritingMessage(false);
+        setClickPosition(null);
       }
+    } else if (isWritingMessage && e.key === 'Escape') {
+      e.preventDefault();
+      setIsWritingMessage(false);
+      setPendingMessage('');
+      setClickPosition(null);
     }
-  }, [multiplayer]);
+  }, [isWritingMessage, pendingMessage, clickPosition, multiplayer]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const canvas = canvasRef.current;
@@ -246,31 +235,37 @@ const App: React.FC = () => {
     }
   }, [multiplayer]);
 
-  const handleMouseClick = useCallback((e: MouseEvent) => {
+  const handleCanvasClick = useCallback((e: MouseEvent) => {
     if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
     
-    // If there's text in the input, send it
-    if (asciiInput.trim()) {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      
-      const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      
-      const x = (e.clientX - rect.left) * dpr;
-      const y = (e.clientY - rect.top) * dpr;
-      
-      // Send each character
-      for (const char of asciiInput.trim()) {
-        setTimeout(() => {
-          multiplayer.sendAsciiInput(char, x + Math.random() * 20 - 10, y + Math.random() * 20 - 10);
-        }, Math.random() * 100);
-      }
-      
-      setAsciiInput('');
-      setScore(prev => prev + asciiInput.trim().length);
-    }
-  }, [multiplayer, asciiInput]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    
+    const x = (e.clientX - rect.left) * dpr;
+    const y = (e.clientY - rect.top) * dpr;
+    
+    // Start writing mode
+    setClickPosition([x, y]);
+    setIsWritingMessage(true);
+    setPendingMessage('');
+  }, [multiplayer]);
+
+  const sendQuickMessage = useCallback((message: string) => {
+    if (!multiplayer.isMyTurn || !multiplayer.isConnected) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Use mouse position or center
+    const x = mouseRef.current[0] || canvas.width / 2;
+    const y = mouseRef.current[1] || canvas.height / 2;
+    
+    multiplayer.sendWidgetMessage(message, x, y);
+    setScore(prev => prev + 1);
+  }, [multiplayer]);
 
   useEffect(() => {
     if (initWebGL()) {
@@ -286,18 +281,21 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('click', handleMouseClick);
+    canvas.addEventListener('click', handleCanvasClick);
     window.addEventListener('resize', resizeCanvas);
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('click', handleMouseClick);
+      canvas.removeEventListener('click', handleCanvasClick);
       window.removeEventListener('resize', resizeCanvas);
     };
-  }, [handleKeyDown, handleMouseMove, handleMouseClick, resizeCanvas]);
+  }, [handleKeyDown, handleMouseMove, handleCanvasClick, resizeCanvas]);
 
   if (webglError) {
     return (
@@ -310,16 +308,84 @@ const App: React.FC = () => {
     );
   }
 
+  const getWidgetColor = (widgetType: number) => {
+    if (widgetType < 0.25) return '#ff4d6d'; // Pink
+    else if (widgetType < 0.5) return '#4dd8ff'; // Cyan
+    else if (widgetType < 0.75) return '#ffed4a'; // Yellow
+    else return '#52d87f'; // Green
+  };
+
   return (
     <>
       <canvas ref={canvasRef} />
       
+      {/* Click Position Indicator */}
+      {isWritingMessage && clickPosition && (
+        <div
+          className="click-indicator"
+          style={{
+            position: 'fixed',
+            left: `${(clickPosition[0] / (canvasRef.current?.width || 1)) * 100}%`,
+            top: `${(clickPosition[1] / (canvasRef.current?.height || 1)) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 2000,
+            fontSize: '24px',
+            animation: 'pulse 1s infinite'
+          }}
+        >
+          ✏️
+        </div>
+      )}
+
+      {/* Message Input Modal */}
+      {isWritingMessage && (
+        <div className="message-input-modal">
+          <div className="message-input-content">
+            <h3>📝 Write your message</h3>
+            <input
+              type="text"
+              value={pendingMessage}
+              onChange={(e) => setPendingMessage(e.target.value)}
+              placeholder="Type your message..."
+              maxLength={50}
+              autoFocus
+              onKeyDown={(e) => e.stopPropagation()} // Prevent bubbling
+            />
+            <div className="message-input-buttons">
+              <button 
+                onClick={() => {
+                  if (pendingMessage.trim() && clickPosition) {
+                    multiplayer.sendWidgetMessage(pendingMessage.trim(), clickPosition[0], clickPosition[1]);
+                    setScore(prev => prev + 1);
+                    setPendingMessage('');
+                    setIsWritingMessage(false);
+                    setClickPosition(null);
+                  }
+                }}
+                disabled={!pendingMessage.trim()}
+              >
+                🚀 Send
+              </button>
+              <button 
+                onClick={() => {
+                  setIsWritingMessage(false);
+                  setPendingMessage('');
+                  setClickPosition(null);
+                }}
+              >
+                ❌ Cancel
+              </button>
+            </div>
+            <small>Press Enter to send, Escape to cancel</small>
+          </div>
+        </div>
+      )}
+      
       {/* Game Header */}
       <div className="game-header">
-        <div className="game-title">🔤 ASCII REACTOR</div>
+        <div className="game-title">🎮 WIDGET BOUNCER</div>
         <div className="room-info">
-          <span className="score-display">✨ {score}</span>
-          <span className="streak-display">🔥 {streak}</span>
+          <span className="score-display">🎯 {score}</span>
           <span className="player-count">
             👥 {multiplayer.room?.playerCount || 1}
           </span>
@@ -330,7 +396,7 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* WarioWare-Style Queue System */}
+      {/* Queue System */}
       {multiplayer.isConnected && multiplayer.room && (
         <div className="queue-panel">
           <div className="current-player-section">
@@ -378,33 +444,40 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* ASCII Characters Display */}
-      {multiplayer.room?.asciiCharacters?.map((char) => {
-        const age = Math.max(0, (char.expiresAt - Date.now()) / 10000); // 0-1
+      {/* Bouncing Widgets */}
+      {multiplayer.room?.widgets?.map((widget) => {
+        const age = Math.max(0, (widget.expiresAt - Date.now()) / 15000); // 0-1
         const opacity = age;
         
-        if (opacity <= 0) return null;
+        if (opacity <= 0.1) return null;
         
         return (
           <div
-            key={char.id}
-            className="ascii-character"
+            key={widget.id}
+            className="bouncing-widget"
             style={{
               position: 'fixed',
-              left: `${char.x * 100}%`,
-              top: `${char.y * 100}%`,
+              left: `${widget.x * 100}%`,
+              top: `${widget.y * 100}%`,
               opacity: opacity,
-              transform: `translate(-50%, -50%) scale(${0.5 + opacity * 0.5})`,
+              transform: `translate(-50%, -50%) scale(${widget.size * opacity})`,
               pointerEvents: 'none',
               zIndex: 1000,
-              fontSize: '24px',
-              color: char.playerId === multiplayer.playerId ? '#00ff88' : '#ff0088',
-              textShadow: '0 0 10px currentColor',
+              fontSize: '20px',
+              color: getWidgetColor(widget.widgetType),
+              textShadow: `0 0 10px ${getWidgetColor(widget.widgetType)}`,
               fontFamily: 'monospace',
-              fontWeight: 'bold'
+              fontWeight: 'bold',
+              background: 'rgba(0,0,0,0.3)',
+              padding: '4px 8px',
+              borderRadius: '8px',
+              border: `2px solid ${getWidgetColor(widget.widgetType)}`,
+              whiteSpace: 'nowrap',
+              maxWidth: '200px',
+              overflow: 'hidden'
             }}
           >
-            {char.character}
+            {widget.message}
           </div>
         );
       })}
@@ -414,13 +487,13 @@ const App: React.FC = () => {
         <div className="shader-name">🎨 {NAMES[0]}</div>
         <div className="shader-challenge">
           {multiplayer.isMyTurn ? 
-            '🔤 Type characters to influence the field!' : 
-            '👀 Watch the reactive ASCII field!'
+            '👆 Click anywhere to write a message!' : 
+            '👀 Watch the bouncing widgets!'
           }
         </div>
-        {multiplayer.room?.asciiCharacters && (
-          <div className="ascii-stats">
-            Active characters: {multiplayer.room.asciiCharacters.filter(c => c.expiresAt > Date.now()).length}
+        {multiplayer.room?.widgets && (
+          <div className="widget-stats">
+            Active widgets: {multiplayer.room.widgets.filter(w => w.expiresAt > Date.now()).length}
           </div>
         )}
       </div>
@@ -434,43 +507,26 @@ const App: React.FC = () => {
           {multiplayer.isMyTurn && (
             <div className="turn-controls">
               <span className="turn-indicator">🎮 Your Turn!</span>
-              <span className="interaction-hint">Type any key or click to add text</span>
+              <span className="interaction-hint">Click anywhere to write a message</span>
             </div>
           )}
         </div>
 
-        {/* ASCII Input */}
+        {/* Quick Messages */}
         {multiplayer.isMyTurn && (
-          <div className="ascii-input-section">
-            <input
-              type="text"
-              value={asciiInput}
-              onChange={(e) => setAsciiInput(e.target.value)}
-              placeholder="Type text and click to place..."
-              className="ascii-input"
-              maxLength={50}
-            />
-            <button 
-              onClick={() => {
-                const canvas = canvasRef.current;
-                if (!canvas || !asciiInput.trim()) return;
-                
-                const centerX = canvas.width / 2;
-                const centerY = canvas.height / 2;
-                
-                for (const char of asciiInput.trim()) {
-                  setTimeout(() => {
-                    multiplayer.sendAsciiInput(char, centerX + Math.random() * 100 - 50, centerY + Math.random() * 100 - 50);
-                  }, Math.random() * 200);
-                }
-                
-                setAsciiInput('');
-              }}
-              className="ascii-send-btn"
-              disabled={!asciiInput.trim()}
-            >
-              🚀 Send
-            </button>
+          <div className="quick-messages">
+            <div className="quick-messages-label">Quick Messages:</div>
+            <div className="quick-buttons">
+              {['🎉', '❤️', '🚀', '✨', 'Hello!', 'Nice!', 'Wow!', 'Cool!'].map((msg) => (
+                <button
+                  key={msg}
+                  className="quick-btn"
+                  onClick={() => sendQuickMessage(msg)}
+                >
+                  {msg}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -482,7 +538,7 @@ const App: React.FC = () => {
                 disabled={multiplayer.connectionStatus === 'connecting'}
                 className="join-btn"
               >
-                {multiplayer.connectionStatus === 'connecting' ? '🟡' : '🚀'} Join ASCII Battle
+                {multiplayer.connectionStatus === 'connecting' ? '🟡' : '🚀'} Join Widget Battle
               </button>
             </div>
           ) : (

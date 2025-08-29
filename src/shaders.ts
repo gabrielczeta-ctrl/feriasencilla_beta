@@ -10,218 +10,106 @@ void main() {
 }
 `;
 
-export const REACTIVE_ASCII_SHADER = `#version 300 es
-precision highp float;
+export const OPTIMIZED_WIDGET_SHADER = `#version 300 es
+precision mediump float;
 
 uniform vec2 u_res;
 uniform float u_time;
 uniform vec2 u_mouse;
-uniform float u_asciiCount;
-uniform vec2[50] u_asciiPositions;
-uniform float[50] u_asciiAges;
-uniform float[50] u_asciiTypes;
+uniform float u_widgetCount;
+uniform vec2[20] u_widgetPositions;
+uniform float[20] u_widgetAges;
+uniform float[20] u_widgetTypes;
 
 in vec2 v_uv;
 out vec4 fragColor;
 
-// Advanced noise functions
+// Fast hash function
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
+// Simple noise - much faster than fbm
 float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
+    f = f * f * (3.0 - 2.0 * f);
     
     return mix(
-        mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-        u.y
+        mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+        mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+        f.y
     );
 }
 
-float fbm(vec2 p) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    for (int i = 0; i < 6; i++) {
-        value += amplitude * noise(p);
-        p *= 2.0;
-        amplitude *= 0.5;
-    }
-    return value;
-}
-
-// SDF for creating text-like shapes
-float sdBox(vec2 p, vec2 b) {
-    vec2 d = abs(p) - b;
-    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
-}
-
-// Create dynamic text shapes based on ASCII type
-float getAsciiShape(vec2 p, float asciiType) {
-    float shape = 1.0;
-    
-    if (asciiType < 0.2) { // Letters - create cross-like pattern
-        shape = min(sdBox(p, vec2(0.02, 0.08)), sdBox(p, vec2(0.08, 0.02)));
-    } else if (asciiType < 0.4) { // Numbers - create box pattern
-        shape = sdBox(p, vec2(0.06, 0.08));
-        shape = max(shape, -sdBox(p, vec2(0.03, 0.05)));
-    } else if (asciiType < 0.6) { // Special chars - create star pattern
-        float a = atan(p.y, p.x);
-        float r = length(p);
-        float star = abs(sin(a * 5.0)) * 0.05;
-        shape = r - star;
-    } else if (asciiType < 0.8) { // Punctuation - create dot/line pattern
-        shape = min(length(p) - 0.02, abs(p.y) - 0.005);
-    } else { // Symbols - create complex pattern
-        float d1 = sdBox(p + vec2(0.03, 0.03), vec2(0.02, 0.05));
-        float d2 = sdBox(p - vec2(0.03, 0.03), vec2(0.02, 0.05));
-        shape = min(d1, d2);
-    }
-    
-    return shape;
-}
-
-// Color palette based on ASCII character influence
-vec3 getAsciiColor(float asciiType, float intensity) {
-    vec3 colors[5];
-    colors[0] = vec3(1.0, 0.3, 0.5); // Red-pink for letters
-    colors[1] = vec3(0.3, 0.8, 1.0); // Cyan for numbers  
-    colors[2] = vec3(0.9, 0.7, 0.2); // Gold for special chars
-    colors[3] = vec3(0.5, 1.0, 0.3); // Green for punctuation
-    colors[4] = vec3(0.8, 0.4, 1.0); // Purple for symbols
-    
-    int index = int(asciiType * 5.0);
-    return colors[index] * intensity;
-}
-
-// Advanced distortion field
-vec2 distortField(vec2 uv, float time) {
-    float d1 = fbm(uv * 3.0 + time * 0.2);
-    float d2 = fbm(uv * 5.0 - time * 0.15);
-    float d3 = fbm(uv * 8.0 + time * 0.1);
-    
-    vec2 distortion = vec2(d1, d2) * 0.03;
-    distortion += vec2(sin(d3 * 10.0), cos(d3 * 10.0)) * 0.01;
-    
-    return distortion;
+// Widget colors based on type
+vec3 getWidgetColor(float widgetType) {
+    if (widgetType < 0.25) return vec3(0.9, 0.3, 0.5); // Pink
+    else if (widgetType < 0.5) return vec3(0.3, 0.8, 0.9); // Cyan
+    else if (widgetType < 0.75) return vec3(0.8, 0.9, 0.3); // Yellow
+    else return vec3(0.5, 0.9, 0.3); // Green
 }
 
 void main() {
     vec2 uv = v_uv;
     vec2 mouse = u_mouse / u_res;
     
-    // Apply subtle distortion
-    vec2 distortion = distortField(uv, u_time);
-    uv += distortion;
+    // Fast animated background
+    float time = u_time * 0.5;
+    vec2 p = uv * 2.0;
     
-    // Base psychedelic background
-    float time = u_time * 0.3;
-    vec2 p = uv * 4.0;
+    // Simple flowing background pattern
+    float pattern = sin(p.x * 4.0 + time) * sin(p.y * 3.0 + time * 0.8);
+    pattern *= sin((p.x + p.y) * 2.0 + time * 1.5);
+    pattern = pattern * 0.5 + 0.5;
     
-    // Multi-layer noise for complex patterns
-    float n1 = fbm(p + time);
-    float n2 = fbm(p * 1.5 - time * 0.8);
-    float n3 = fbm(p * 2.3 + time * 0.6);
+    // Base gradient
+    vec3 bg1 = vec3(0.1, 0.05, 0.3);
+    vec3 bg2 = vec3(0.05, 0.2, 0.4);
+    vec3 background = mix(bg1, bg2, pattern);
     
-    // Create flowing patterns
-    float pattern = sin(n1 * 8.0 + time * 2.0) * 0.5 + 0.5;
-    pattern *= sin(n2 * 6.0 - time * 1.5) * 0.5 + 0.5;
-    pattern *= sin(n3 * 10.0 + time * 3.0) * 0.5 + 0.5;
+    // Mouse glow
+    float mouseDist = length(uv - mouse);
+    vec3 mouseGlow = vec3(0.2, 0.4, 0.8) * exp(-mouseDist * 4.0) * 0.3;
+    background += mouseGlow;
     
-    // Base color influenced by mouse
-    vec3 baseColor = vec3(0.1, 0.05, 0.2);
-    vec3 mouseInfluence = vec3(0.3, 0.6, 0.9) * exp(-length(uv - mouse) * 3.0);
-    baseColor += mouseInfluence;
+    // Widget influences - much simpler and faster
+    vec3 widgetInfluence = vec3(0.0);
     
-    // Background gradient
-    vec3 gradient1 = vec3(0.2, 0.1, 0.4);
-    vec3 gradient2 = vec3(0.05, 0.2, 0.3);
-    vec3 background = mix(gradient1, gradient2, pattern);
-    
-    // Energy field visualization
-    float energy = 0.0;
-    vec3 asciiInfluence = vec3(0.0);
-    
-    // Process each ASCII character
-    for (int i = 0; i < 50; i++) {
-        if (float(i) >= u_asciiCount) break;
+    for (int i = 0; i < 20; i++) {
+        if (float(i) >= u_widgetCount) break;
         
-        vec2 asciiPos = u_asciiPositions[i];
-        float age = u_asciiAges[i];
-        float asciiType = u_asciiTypes[i];
+        vec2 widgetPos = u_widgetPositions[i];
+        float age = u_widgetAges[i];
+        float widgetType = u_widgetTypes[i];
         
-        if (age <= 0.0) continue; // Skip dead characters
+        if (age <= 0.0) continue;
         
-        // Normalize age (0 to 10 seconds -> 1 to 0)
-        float normalizedAge = clamp(age / 10.0, 0.0, 1.0);
+        // Simple distance-based influence
+        float dist = length(uv - widgetPos);
+        float influence = exp(-dist * 3.0) * age;
         
-        // Distance from character
-        vec2 toAscii = uv - asciiPos;
-        float dist = length(toAscii);
+        // Pulsing effect
+        influence *= sin(u_time * 5.0 + widgetType * 10.0) * 0.5 + 0.5;
         
-        // Create expanding rings of influence
-        float ringEffect = sin(dist * 20.0 - u_time * 5.0 + asciiType * 10.0) * 0.5 + 0.5;
-        ringEffect *= exp(-dist * 2.0);
-        ringEffect *= normalizedAge; // Fade with age
-        
-        // Character shape influence
-        vec2 localPos = toAscii * 20.0; // Scale for shape detail
-        float shape = getAsciiShape(localPos, asciiType);
-        float shapeInfluence = 1.0 - smoothstep(0.0, 0.1, shape);
-        shapeInfluence *= normalizedAge;
-        
-        // Color contribution
-        vec3 charColor = getAsciiColor(asciiType, normalizedAge);
-        asciiInfluence += charColor * (ringEffect + shapeInfluence * 0.5);
-        
-        // Energy field contribution
-        energy += ringEffect * 0.3 + shapeInfluence * 0.7;
-        
-        // Distortion waves from character
-        float wave = sin(dist * 15.0 - u_time * 8.0 + asciiType * 5.0);
-        wave *= normalizedAge * exp(-dist * 1.5);
-        
-        // Apply local distortion around character
-        vec2 waveDir = normalize(toAscii);
-        if (dist > 0.0) {
-            uv += waveDir * wave * 0.005;
-        }
+        // Add color
+        vec3 widgetColor = getWidgetColor(widgetType);
+        widgetInfluence += widgetColor * influence * 0.4;
     }
     
-    // Combine all influences
-    vec3 finalColor = background;
+    // Combine everything
+    vec3 finalColor = background + widgetInfluence;
     
-    // Add energy field visualization
-    vec3 energyColor = vec3(1.0, 0.8, 0.3) * energy * 0.5;
-    finalColor += energyColor;
-    
-    // Add ASCII character influence
-    finalColor += asciiInfluence * 0.8;
-    
-    // Dynamic color shifting based on total energy
-    float totalEnergy = energy + length(asciiInfluence);
-    finalColor = mix(finalColor, finalColor.zxy, totalEnergy * 0.3);
-    
-    // Enhance with flowing colors
-    float colorShift = sin(u_time * 2.0 + totalEnergy * 5.0) * 0.5 + 0.5;
-    finalColor = mix(finalColor, finalColor.yzx, colorShift * 0.2);
-    
-    // Subtle vignette
-    float vignette = 1.0 - length(uv - 0.5) * 0.8;
+    // Simple vignette
+    float vignette = 1.0 - length(uv - 0.5) * 0.6;
     finalColor *= vignette;
     
-    // Bloom effect
-    finalColor += exp(-length(uv - mouse) * 10.0) * vec3(0.1, 0.3, 0.5) * 0.3;
-    
-    // Final tone mapping for vibrant colors
-    finalColor = finalColor / (finalColor + vec3(1.0));
-    finalColor = pow(finalColor, vec3(0.8)); // Gamma correction
+    // Gamma correction
+    finalColor = pow(finalColor, vec3(0.8));
     
     fragColor = vec4(finalColor, 1.0);
 }
 `;
 
-export const SHADERS = [REACTIVE_ASCII_SHADER];
-export const NAMES = ['Reactive ASCII Field'];
+export const SHADERS = [OPTIMIZED_WIDGET_SHADER];
+export const NAMES = ['Widget Bouncer'];

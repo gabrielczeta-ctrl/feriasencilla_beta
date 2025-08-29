@@ -11,15 +11,19 @@ interface Player {
   isActive: boolean;
 }
 
-interface AsciiCharacter {
+interface Widget {
   id: string;
   playerId: string;
-  character: string;
+  message: string;
   x: number;
   y: number;
-  asciiType: number;
+  vx: number;
+  vy: number;
+  widgetType: number;
   createdAt: number;
   expiresAt: number;
+  bounce: number;
+  size: number;
 }
 
 interface Room {
@@ -32,7 +36,7 @@ interface Room {
   currentPlayer?: string;
   queue?: string[];
   timeRemaining?: number;
-  asciiCharacters?: AsciiCharacter[];
+  widgets?: Widget[];
 }
 
 interface MultiplayerState {
@@ -184,12 +188,12 @@ export function useMultiplayer() {
       });
     });
 
-    socket.on('ascii-added', (data: { asciiChar: AsciiCharacter; addedBy: string }) => {
-      console.log('🔤 ASCII character added:', data.asciiChar.character, 'by', data.addedBy);
+    socket.on('widget-added', (data: { widget: Widget; addedBy: string }) => {
+      console.log('🎮 Widget added:', data.widget.message, 'by', data.addedBy);
     });
 
-    socket.on('ascii-update', (data: { asciiCharacters: AsciiCharacter[] }) => {
-      console.log('📝 ASCII update received:', data.asciiCharacters.length, 'characters');
+    socket.on('widget-update', (data: { widgets: Widget[] }) => {
+      console.log('📲 Widget update received:', data.widgets.length, 'widgets');
       setState(prev => {
         if (!prev.room) return prev;
         
@@ -197,7 +201,7 @@ export function useMultiplayer() {
           ...prev,
           room: {
             ...prev.room,
-            asciiCharacters: data.asciiCharacters
+            widgets: data.widgets
           }
         };
       });
@@ -252,18 +256,18 @@ export function useMultiplayer() {
     }
   }, []);
 
-  // Send ASCII character (only if it's your turn)
-  const sendAsciiInput = useCallback((character: string, x: number, y: number) => {
+  // Send widget message (only if it's your turn)
+  const sendWidgetMessage = useCallback((message: string, x: number, y: number) => {
     if (!socketRef.current?.connected) return;
     if (!state.isMyTurn) {
-      console.log('🚫 Not your turn - ASCII input blocked');
+      console.log('🚫 Not your turn - widget creation blocked');
       return;
     }
-    if (!character || character.length !== 1) {
-      console.log('🚫 Invalid character - must be single character');
+    if (!message || message.length > 50) {
+      console.log('🚫 Invalid message - must be 1-50 characters');
       return;
     }
-    socketRef.current.emit('ascii-input', { character, x, y });
+    socketRef.current.emit('create-widget', { message, x, y });
   }, [state.isMyTurn]);
 
   // Disconnect
@@ -293,7 +297,7 @@ export function useMultiplayer() {
     connect,
     joinBattle,
     sendMousePosition,
-    sendAsciiInput,
+    sendWidgetMessage,
     disconnect
   };
 }
