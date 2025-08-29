@@ -12,7 +12,7 @@ const App: React.FC = () => {
   const [currentShader, setCurrentShader] = useState(0);
   const [showHUD, setShowHUD] = useState(true);
   const [webglError, setWebglError] = useState<string | null>(null);
-  const [autoCycle, setAutoCycle] = useState(true);
+  const [autoCycle] = useState(true);
   
   // Game state
   const [score, setScore] = useState(0);
@@ -183,19 +183,26 @@ const App: React.FC = () => {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const key = e.key.toLowerCase();
     
-    if (key >= '1' && key <= '4') {
-      const index = parseInt(key) - 1;
-      if (index !== currentShader) {
-        setCurrentShader(index);
-      }
-    } else if (key === 'n') {
-      setCurrentShader((prev) => (prev + 1) % SHADERS.length);
-    } else if (key === 'p') {
-      setCurrentShader((prev) => (prev - 1 + SHADERS.length) % SHADERS.length);
-    } else if (key === 'h') {
+    // Only allow HUD toggle - no manual shader switching in multiplayer
+    if (key === 'h') {
       setShowHUD((prev) => !prev);
     }
-  }, [currentShader]);
+    
+    // Visual interactions for current player
+    if (multiplayer.isMyTurn && multiplayer.isConnected) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      
+      if (key === ' ' || key === 'enter') {
+        multiplayer.sendVisualInteraction('pulse', centerX, centerY);
+      } else if (key >= '1' && key <= '8') {
+        multiplayer.sendVisualInteraction('number_press', centerX, centerY);
+      }
+    }
+  }, [multiplayer]);
 
   // Game challenges
   const challenges = [
@@ -244,6 +251,17 @@ const App: React.FC = () => {
     // Send to multiplayer if connected
     if (multiplayer.isConnected) {
       multiplayer.sendMousePosition(newMousePos[0], newMousePos[1]);
+      
+      // Send visual interactions if it's your turn
+      if (multiplayer.isMyTurn) {
+        // Trigger interaction based on mouse activity
+        const speed = Math.sqrt((mouseX - (mouseRef.current?.[0] || 0))**2 + (mouseY - (mouseRef.current?.[1] || 0))**2);
+        if (speed > 50) {
+          multiplayer.sendVisualInteraction('fast_movement', mouseX, mouseY);
+        } else if (distanceFromCenter < maxDistance * 0.1) {
+          multiplayer.sendVisualInteraction('center_hover', mouseX, mouseY);
+        }
+      }
     }
   }, [multiplayer, challenge]);
 
@@ -284,16 +302,17 @@ const App: React.FC = () => {
     }
   }, [multiplayer.room?.currentShader, currentShader]);
 
-  // Auto-cycle disabled when connected to multiplayer (server controls turns)
+  // Auto-cycle only when NOT connected to multiplayer (server controls when connected)
   useEffect(() => {
-    if (!autoCycle || multiplayer.isConnected) return;
+    if (multiplayer.isConnected) return; // Server controls shaders in multiplayer
+    if (!autoCycle) return;
     
     const interval = setInterval(() => {
       setCurrentShader((prev) => {
         const nextShader = (prev + 1) % SHADERS.length;
         return nextShader;
       });
-    }, 45000); // 45 seconds
+    }, 15000); // 15 seconds for single player
     
     return () => clearInterval(interval);
   }, [autoCycle, multiplayer.isConnected]);
@@ -424,38 +443,77 @@ const App: React.FC = () => {
         </div>
       ))}
 
-      {/* Control Panel */}
+      {/* Visual Interactions */}
+      {multiplayer.room?.visualInteractions?.map((interaction) => {
+        const age = Date.now() - interaction.timestamp;
+        const opacity = Math.max(0, 1 - (age / 3000)); // Fade over 3 seconds
+        if (opacity <= 0) return null;
+        
+        const getInteractionEmoji = (type: string) => {
+          switch (type) {
+            case 'fast_movement': return '💨';
+            case 'center_hover': return '🎯';
+            case 'pulse': return '💥';
+            case 'number_press': return '🔢';
+            default: return '✨';
+          }
+        };
+        
+        return (
+          <div
+            key={`${interaction.playerId}-${interaction.timestamp}`}
+            className="visual-interaction"
+            style={{
+              position: 'fixed',
+              left: `${(interaction.x / (canvasRef.current?.width || 1)) * 100}%`,
+              top: `${(interaction.y / (canvasRef.current?.height || 1)) * 100}%`,
+              opacity: opacity,
+              transform: `scale(${opacity}) translate(-50%, -50%)`,
+              pointerEvents: 'none',
+              zIndex: 1001,
+              fontSize: '24px',
+              filter: interaction.playerId === multiplayer.playerId ? 'drop-shadow(0 0 10px #00ff88)' : 'drop-shadow(0 0 10px #ff0088)'
+            }}
+          >
+            {getInteractionEmoji(interaction.interaction)}
+          </div>
+        );
+      })}
+
+      {/* Control Panel - Automatic Shader Display */}
       <div className={`control-panel ${!showHUD ? 'hidden' : ''}`}>
-        <div className="shader-selector">
-          {SHADERS.map((_, index) => (
-            <button
-              key={index}
-              className={`shader-btn ${index === currentShader ? 'active' : ''}`}
-              onClick={() => {
-                setCurrentShader(index);
-                setAutoCycle(false); // Disable auto-cycle when manually selected
-                setTimeout(() => setAutoCycle(true), 10000); // Re-enable after 10 seconds
-                if (multiplayer.isConnected) {
-                  multiplayer.changeShader(index);
-                }
-              }}
-              title={NAMES[index]}
-            >
-              {index + 1}
-            </button>
-          ))}
+        <div className="shader-display">
+          <div className="current-shader-info">
+            <div className="shader-preview">
+              {SHADERS.map((_, index) => (
+                <div
+                  key={index}
+                  className={`shader-indicator ${index === currentShader ? 'active' : ''}`}
+                  title={NAMES[index]}
+                >
+                  {index + 1}
+                </div>
+              ))}
+            </div>
+            <div className="shader-status">
+              {multiplayer.isConnected ? 
+                '🤖 Server Controlled' : 
+                '🔄 Auto Cycling'
+              }
+            </div>
+          </div>
         </div>
         
         <div className="game-controls">
-          <button className="control-btn" onClick={() => setCurrentShader((prev) => (prev - 1 + SHADERS.length) % SHADERS.length)}>
-            ⏮ Previous
-          </button>
           <button className="control-btn" onClick={() => setShowHUD(!showHUD)}>
             👁 {showHUD ? 'Hide' : 'Show'} UI
           </button>
-          <button className="control-btn" onClick={() => setCurrentShader((prev) => (prev + 1) % SHADERS.length)}>
-            ⏭ Next
-          </button>
+          {multiplayer.isMyTurn && (
+            <div className="turn-controls">
+              <span className="turn-indicator">🎮 Your Turn!</span>
+              <span className="interaction-hint">Move mouse & press keys</span>
+            </div>
+          )}
         </div>
 
         <div className="multiplayer-section">

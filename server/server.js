@@ -96,8 +96,8 @@ class GameRoom {
     this.currentPlayer = this.queue.shift();
     this.queue.push(this.currentPlayer); // Add back to end of queue
     
-    // Pick random shader for this turn
-    this.currentShader = Math.floor(Math.random() * 4); // Assuming 4 shaders
+    // Pick random shader for this turn - use all 8 shaders
+    this.currentShader = Math.floor(Math.random() * 8);
     
     this.gameState = 'playing';
     this.timeRemaining = this.turnDuration / 1000; // Convert to seconds
@@ -112,9 +112,15 @@ class GameRoom {
       clearInterval(this.turnTimer);
     }
     
-    // Start countdown timer
+    // Start countdown timer with shader transitions
     this.turnTimer = setInterval(() => {
       this.timeRemaining -= 1;
+      
+      // Add shader transitions during the turn (every 10-15 seconds)
+      if (this.timeRemaining > 0 && (this.timeRemaining === 30 || this.timeRemaining === 15)) {
+        this.currentShader = Math.floor(Math.random() * 8);
+        console.log(`🎨 Automatic shader transition to ${this.currentShader} for ${this.currentPlayer}`);
+      }
       
       // Broadcast timer updates every second
       this.broadcastGameState();
@@ -232,23 +238,27 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Handle shader change
-  socket.on('change-shader', (data) => {
+  // Handle visual interaction (only current player can interact)
+  socket.on('visual-interaction', (data) => {
     const session = playerSessions.get(socket.id);
     if (!session) return;
     
     const room = rooms.get(session.roomId);
-    if (!room) return;
+    if (!room || room.currentPlayer !== socket.id) {
+      // Only current player can make visual interactions
+      return;
+    }
     
-    room.currentShader = data.shaderIndex;
-    
-    // Broadcast shader change to all players
-    io.to(session.roomId).emit('shader-changed', {
-      shaderIndex: data.shaderIndex,
-      changedBy: socket.id
+    // Broadcast visual interaction to all players
+    io.to(session.roomId).emit('player-visual-interaction', {
+      playerId: socket.id,
+      interaction: data.interaction,
+      x: data.x,
+      y: data.y,
+      timestamp: Date.now()
     });
     
-    console.log(`🎨 Shader changed to ${data.shaderIndex} in room ${session.roomId}`);
+    console.log(`✨ Visual interaction by ${socket.id}: ${data.interaction}`);
   });
   
   // Handle disconnection

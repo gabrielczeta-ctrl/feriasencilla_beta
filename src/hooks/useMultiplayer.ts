@@ -21,6 +21,7 @@ interface Room {
   currentPlayer?: string;
   queue?: string[];
   timeRemaining?: number;
+  visualInteractions?: Array<{ playerId: string; interaction: string; x: number; y: number; timestamp: number }>;
 }
 
 interface MultiplayerState {
@@ -30,6 +31,7 @@ interface MultiplayerState {
   playerName: string | null;
   otherPlayers: Player[];
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
+  isMyTurn: boolean;
 }
 
 // Server configuration - auto-detect environment
@@ -44,7 +46,8 @@ export function useMultiplayer() {
     playerId: null,
     playerName: null,
     otherPlayers: [],
-    connectionStatus: 'disconnected'
+    connectionStatus: 'disconnected',
+    isMyTurn: false
   });
 
   const socketRef = useRef<Socket | null>(null);
@@ -148,7 +151,8 @@ export function useMultiplayer() {
           currentPlayer: data.currentPlayer,
           queue: data.queue,
           timeRemaining: data.timeRemaining
-        } : null
+        } : null,
+        isMyTurn: data.currentPlayer === prev.playerId
       }));
     });
 
@@ -164,6 +168,29 @@ export function useMultiplayer() {
               ...prev.room.mousePositions,
               [data.playerId]: { x: data.x, y: data.y, timestamp: Date.now() }
             }
+          }
+        };
+      });
+    });
+
+    socket.on('player-visual-interaction', (data: { playerId: string; interaction: string; x: number; y: number; timestamp: number }) => {
+      console.log('✨ Visual interaction received:', data);
+      setState(prev => {
+        if (!prev.room) return prev;
+        
+        const newInteraction = { 
+          playerId: data.playerId, 
+          interaction: data.interaction, 
+          x: data.x, 
+          y: data.y, 
+          timestamp: data.timestamp 
+        };
+        
+        return {
+          ...prev,
+          room: {
+            ...prev.room,
+            visualInteractions: [...(prev.room.visualInteractions || []), newInteraction].slice(-20) // Keep last 20 interactions
           }
         };
       });
@@ -218,11 +245,15 @@ export function useMultiplayer() {
     }
   }, []);
 
-  // Change shader
-  const changeShader = useCallback((shaderIndex: number) => {
+  // Send visual interaction (only if it's your turn)
+  const sendVisualInteraction = useCallback((interaction: string, x: number, y: number) => {
     if (!socketRef.current?.connected) return;
-    socketRef.current.emit('change-shader', { shaderIndex });
-  }, []);
+    if (!state.isMyTurn) {
+      console.log('🚫 Not your turn - visual interaction blocked');
+      return;
+    }
+    socketRef.current.emit('visual-interaction', { interaction, x, y });
+  }, [state.isMyTurn]);
 
   // Disconnect
   const disconnect = useCallback(() => {
@@ -234,7 +265,8 @@ export function useMultiplayer() {
       playerId: null,
       playerName: null,
       otherPlayers: [],
-      connectionStatus: 'disconnected'
+      connectionStatus: 'disconnected',
+      isMyTurn: false
     });
   }, []);
 
@@ -250,7 +282,7 @@ export function useMultiplayer() {
     connect,
     joinBattle,
     sendMousePosition,
-    changeShader,
+    sendVisualInteraction,
     disconnect
   };
 }
