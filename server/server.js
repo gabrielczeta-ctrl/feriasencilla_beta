@@ -81,13 +81,22 @@ io.on('connection', (socket) => {
   // Join room
   socket.on('join-room', (data) => {
     const { roomId: requestedRoomId, playerName } = data;
-    let roomId = requestedRoomId;
+    let roomId = requestedRoomId || 'GLOBAL';
     
-    // Create new room if none specified or doesn't exist
-    if (!roomId || !rooms.has(roomId)) {
-      roomId = generateRoomId();
-      rooms.set(roomId, new GameRoom(roomId));
-      console.log(`🆕 Created room: ${roomId}`);
+    // Always use GLOBAL room for multiplayer battles
+    if (roomId === 'GLOBAL' || !roomId) {
+      roomId = 'GLOBAL';
+      if (!rooms.has(roomId)) {
+        rooms.set(roomId, new GameRoom(roomId));
+        console.log(`🆕 Created GLOBAL battle room`);
+      }
+    } else {
+      // Create new room if custom room doesn't exist
+      if (!rooms.has(roomId)) {
+        roomId = generateRoomId();
+        rooms.set(roomId, new GameRoom(roomId));
+        console.log(`🆕 Created room: ${roomId}`);
+      }
     }
     
     const room = rooms.get(roomId);

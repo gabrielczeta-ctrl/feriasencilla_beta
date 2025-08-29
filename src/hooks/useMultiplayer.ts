@@ -29,8 +29,10 @@ interface MultiplayerState {
   connectionStatus: 'disconnected' | 'connecting' | 'connected';
 }
 
-// Using Railway deployment - now properly configured!
-const SERVER_URL = 'wss://feriasencillabeta-production.up.railway.app';
+// Server configuration - auto-detect environment
+const SERVER_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://feriasencillabeta-production.up.railway.app'
+  : 'http://localhost:3001';
 
 export function useMultiplayer() {
   const [state, setState] = useState<MultiplayerState>({
@@ -52,13 +54,17 @@ export function useMultiplayer() {
     setState(prev => ({ ...prev, connectionStatus: 'connecting' }));
     
     socketRef.current = io(SERVER_URL, {
-      transports: ['websocket']
+      transports: ['websocket', 'polling'],
+      timeout: 10000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     });
 
     const socket = socketRef.current;
 
     socket.on('connect', () => {
-      console.log('🟢 Connected to shader battle server');
+      console.log('🟢 Connected to shader battle server:', SERVER_URL);
       setState(prev => ({ 
         ...prev, 
         isConnected: true, 
@@ -66,8 +72,17 @@ export function useMultiplayer() {
       }));
     });
 
-    socket.on('disconnect', () => {
-      console.log('🔴 Disconnected from server');
+    socket.on('connect_error', (error) => {
+      console.error('🔴 Connection error:', error);
+      setState(prev => ({ 
+        ...prev, 
+        isConnected: false, 
+        connectionStatus: 'disconnected' 
+      }));
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('🔴 Disconnected from server:', reason);
       setState(prev => ({ 
         ...prev, 
         isConnected: false, 
