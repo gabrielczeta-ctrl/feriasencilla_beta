@@ -85,7 +85,25 @@ wss.on("connection", (ws, req) => {
 
     if (msg.type === "hello") {
       const notes = await fetchActiveNotes();
-      ws.send(JSON.stringify({ type: "state", notes }));
+      const currentVideo = await getCurrentVideo();
+      ws.send(JSON.stringify({ type: "state", notes, currentVideo }));
+      return;
+    }
+
+    if (msg.type === "video" && msg.url) {
+      // Broadcast video change to all clients
+      const videoMsg = { type: "video", url: msg.url, timestamp: Date.now() };
+      
+      if (redisConnected && redis) {
+        try {
+          await redis.set("current_video", JSON.stringify(videoMsg), "EX", 3600); // 1 hour
+          await pub.publish(CHANNEL, JSON.stringify(videoMsg));
+        } catch (error) {
+          console.warn("Redis video operation failed:", error.message);
+        }
+      }
+      
+      broadcast(videoMsg);
       return;
     }
 
@@ -129,6 +147,19 @@ function broadcast(obj) {
   const data = JSON.stringify(obj);
   for (const ws of clients) {
     if (ws.readyState === 1) ws.send(data);
+  }
+}
+
+// Get current video from Redis
+async function getCurrentVideo() {
+  if (!redisConnected || !redis) return null;
+  
+  try {
+    const video = await redis.get("current_video");
+    return video ? JSON.parse(video) : null;
+  } catch (error) {
+    console.warn("Failed to fetch current video from Redis:", error.message);
+    return null;
   }
 }
 
