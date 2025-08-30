@@ -5,7 +5,8 @@ import crypto from "crypto";
 
 const PORT = process.env.PORT || 8080;
 // Railway Redis can use different environment variable names
-const REDIS_URL = process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || process.env.REDIS_PUBLIC_URL || "redis://localhost:6379";
+// Prefer PUBLIC_URL as internal networking sometimes fails
+const REDIS_URL = process.env.REDIS_PUBLIC_URL || process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || "redis://localhost:6379";
 
 console.log("🔍 Redis URL:", REDIS_URL.replace(/\/\/.*@/, "//***:***@")); // Log URL with masked credentials
 
@@ -23,10 +24,21 @@ let redisConnected = false;
 // Check if we have a real Redis URL (not localhost fallback)
 const hasRedis = REDIS_URL && !REDIS_URL.includes('localhost:6379');
 
+console.log("🔍 Has Redis:", hasRedis);
+console.log("🔍 Will use URL:", hasRedis ? REDIS_URL.replace(/\/\/.*@/, "//***:***@") : "None");
+
 if (hasRedis) {
-  redis = new Redis(REDIS_URL, { lazyConnect: true });
-  pub = new Redis(REDIS_URL, { lazyConnect: true });
-  sub = new Redis(REDIS_URL, { lazyConnect: true });
+  const redisConfig = {
+    lazyConnect: true,
+    retryDelayOnFailover: 100,
+    maxRetriesPerRequest: 1,
+    connectTimeout: 5000,
+    commandTimeout: 5000
+  };
+  
+  redis = new Redis(REDIS_URL, redisConfig);
+  pub = new Redis(REDIS_URL, redisConfig);
+  sub = new Redis(REDIS_URL, redisConfig);
 
   // Connect to Redis, but don't block server startup if it fails
   try {
