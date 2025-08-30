@@ -13,13 +13,25 @@ const redis = new Redis(REDIS_URL, { lazyConnect: true });
 const pub = new Redis(REDIS_URL, { lazyConnect: true });
 const sub = new Redis(REDIS_URL, { lazyConnect: true });
 
-await Promise.all([redis.connect(), pub.connect(), sub.connect()]);
-await sub.subscribe(CHANNEL);
+// Connect to Redis, but don't block server startup if it fails
+let redisConnected = false;
+try {
+  await Promise.all([redis.connect(), pub.connect(), sub.connect()]);
+  await sub.subscribe(CHANNEL);
+  redisConnected = true;
+  console.log("✅ Redis connected");
+} catch (error) {
+  console.warn("⚠️ Redis connection failed, running without persistence:", error.message);
+}
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ ok: true }));
+    res.end(JSON.stringify({ 
+      ok: true, 
+      redis: redisConnected,
+      uptime: process.uptime()
+    }));
     return;
   }
   // Basic home
@@ -55,22 +67,30 @@ wss.on("connection", (ws, req) => {
       const id = crypto.randomUUID();
       const note = { id, ...clean, createdAt, expireAt };
 
-      // Store & index
-      await redis.set(`note:${id}`, JSON.stringify(note), "EX", NOTE_TTL_MS / 1000);
-      await redis.zadd(ZKEY, expireAt, id);
-
-      // Broadcast via Redis so all instances get it
-      await pub.publish(CHANNEL, JSON.stringify({ type: "new", note }));
-      // Echo locally as well (optional, sub will also deliver)
+      // Store & index (only if Redis is connected)
+      if (redisConnected) {
+        try {
+          await redis.set(`note:${id}`, JSON.stringify(note), "EX", NOTE_TTL_MS / 1000);
+          await redis.zadd(ZKEY, expireAt, id);
+          // Broadcast via Redis so all instances get it
+          await pub.publish(CHANNEL, JSON.stringify({ type: "new", note }));
+        } catch (error) {
+          console.warn("Redis operation failed:", error.message);
+        }
+      }
+      
+      // Always broadcast locally
       broadcast({ type: "new", note });
     }
   });
 });
 
-// Redis pubsub → fan out to WS clients
-sub.on("message", (_, raw) => {
-  try { broadcast(JSON.parse(raw)); } catch {}
-});
+// Redis pubsub → fan out to WS clients (only if Redis connected)
+if (redisConnected) {
+  sub.on("message", (_, raw) => {
+    try { broadcast(JSON.parse(raw)); } catch {}
+  });
+}
 
 function broadcast(obj) {
   const data = JSON.stringify(obj);
@@ -81,16 +101,25 @@ function broadcast(obj) {
 
 // Fetch active notes: prune expired, then fetch bodies
 async function fetchActiveNotes() {
-  const now = Date.now();
-  // prune expired ids
-  await redis.zremrangebyscore(ZKEY, "-inf", now);
-  const ids = await redis.zrange(ZKEY, 0, -1);
-  if (ids.length === 0) return [];
-  const keys = ids.map((id) => `note:${id}`);
-  const vals = await redis.mget(keys);
-  return vals.filter(Boolean).map((s) => {
-    try { return JSON.parse(s); } catch { return null; }
-  }).filter(Boolean);
+  if (!redisConnected) {
+    return []; // Return empty array if Redis not connected
+  }
+  
+  try {
+    const now = Date.now();
+    // prune expired ids
+    await redis.zremrangebyscore(ZKEY, "-inf", now);
+    const ids = await redis.zrange(ZKEY, 0, -1);
+    if (ids.length === 0) return [];
+    const keys = ids.map((id) => `note:${id}`);
+    const vals = await redis.mget(keys);
+    return vals.filter(Boolean).map((s) => {
+      try { return JSON.parse(s); } catch { return null; }
+    }).filter(Boolean);
+  } catch (error) {
+    console.warn("Failed to fetch notes from Redis:", error.message);
+    return [];
+  }
 }
 
 // Simple per-IP cooldown
