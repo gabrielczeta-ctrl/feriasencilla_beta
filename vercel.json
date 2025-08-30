@@ -2,5 +2,8 @@
   "buildCommand": "cp package.frontend.json package.json && cp package-lock.frontend.json package-lock.json && npm run build",
   "devCommand": "cp package.frontend.json package.json && cp package-lock.frontend.json package-lock.json && npm run dev", 
   "installCommand": "cp package.frontend.json package.json && cp package-lock.frontend.json package-lock.json && npm install",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_WS_URL": "wss://feriasencilla-beta-production.up.railway.app/ws"
+  }
 }
