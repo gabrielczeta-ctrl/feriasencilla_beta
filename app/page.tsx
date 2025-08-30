@@ -385,7 +385,39 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
   );
 }
 
-// --- RPG User System ---
+// --- CRAZY RPG Character System ---
+interface CharacterStats {
+  // Core RPG Stats
+  strength: number;
+  intelligence: number;
+  charisma: number;
+  luck: number;
+  dexterity: number;
+  wisdom: number;
+  
+  // WEIRD Stats
+  memeKnowledge: number;
+  caffeineAddiction: number;
+  procrastination: number;
+  socialAnxiety: number;
+  pizzaConsumption: number;
+  sleepDeprivation: number;
+  
+  // Mystical Stats  
+  vibeEnergy: number;
+  cosmicConnection: number;
+  rainbowAura: number;
+  timeDistortion: number;
+  gravityResistance: number;
+  
+  // Absurd Stats
+  spoonBendingPower: number;
+  catVideoAppreciation: number;
+  existentialDread: number;
+  spontaneousJoy: number;
+  unicornBelief: number;
+}
+
 interface User {
   name: string;
   emoji: string;
@@ -394,6 +426,53 @@ interface User {
   level: number;
   messagesSent: number;
   joinedAt: number;
+  stats: CharacterStats;
+}
+
+// Generate completely random character stats
+function generateRandomStats(): CharacterStats {
+  const randomStat = () => Math.floor(Math.random() * 100) + 1;
+  return {
+    // Core RPG Stats (1-100)
+    strength: randomStat(),
+    intelligence: randomStat(),
+    charisma: randomStat(),
+    luck: randomStat(),
+    dexterity: randomStat(),
+    wisdom: randomStat(),
+    
+    // WEIRD Stats (1-100)
+    memeKnowledge: randomStat(),
+    caffeineAddiction: randomStat(),
+    procrastination: randomStat(),
+    socialAnxiety: randomStat(),
+    pizzaConsumption: randomStat(),
+    sleepDeprivation: randomStat(),
+    
+    // Mystical Stats (1-100)
+    vibeEnergy: randomStat(),
+    cosmicConnection: randomStat(),
+    rainbowAura: randomStat(),
+    timeDistortion: randomStat(),
+    gravityResistance: randomStat(),
+    
+    // Absurd Stats (1-100)
+    spoonBendingPower: randomStat(),
+    catVideoAppreciation: randomStat(),
+    existentialDread: randomStat(),
+    spontaneousJoy: randomStat(),
+    unicornBelief: randomStat(),
+  };
+}
+
+// Get stat description based on value
+function getStatDescription(value: number): string {
+  if (value >= 90) return "🌟 LEGENDARY";
+  if (value >= 75) return "⚡ EPIC";
+  if (value >= 60) return "🔥 HIGH";
+  if (value >= 40) return "✨ DECENT";
+  if (value >= 25) return "📊 LOW";
+  return "💀 ABYSMAL";
 }
 
 // XP required for each level (exponential growth)
@@ -508,12 +587,134 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
               xp: 0,
               level: 1,
               messagesSent: 0,
-              joinedAt: Date.now()
+              joinedAt: Date.now(),
+              stats: generateRandomStats()
             })}
             disabled={!name.trim()}
             className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] transition-transform"
           >
-            🚀 Begin Your Journey
+            🎲 Generate Character & Begin!
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Character Stats Modal ---
+interface CharacterStatsModalProps {
+  user: User;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps) {
+  if (!isOpen) return null;
+
+  const statCategories = [
+    {
+      title: "⚔️ Core RPG Stats",
+      stats: [
+        { name: "Strength", value: user.stats.strength, icon: "💪" },
+        { name: "Intelligence", value: user.stats.intelligence, icon: "🧠" },
+        { name: "Charisma", value: user.stats.charisma, icon: "😎" },
+        { name: "Luck", value: user.stats.luck, icon: "🍀" },
+        { name: "Dexterity", value: user.stats.dexterity, icon: "🤸" },
+        { name: "Wisdom", value: user.stats.wisdom, icon: "🦉" },
+      ]
+    },
+    {
+      title: "🌐 Weird Life Stats",
+      stats: [
+        { name: "Meme Knowledge", value: user.stats.memeKnowledge, icon: "🐸" },
+        { name: "Caffeine Addiction", value: user.stats.caffeineAddiction, icon: "☕" },
+        { name: "Procrastination", value: user.stats.procrastination, icon: "⏰" },
+        { name: "Social Anxiety", value: user.stats.socialAnxiety, icon: "😰" },
+        { name: "Pizza Consumption", value: user.stats.pizzaConsumption, icon: "🍕" },
+        { name: "Sleep Deprivation", value: user.stats.sleepDeprivation, icon: "😴" },
+      ]
+    },
+    {
+      title: "🔮 Mystical Powers",
+      stats: [
+        { name: "Vibe Energy", value: user.stats.vibeEnergy, icon: "✨" },
+        { name: "Cosmic Connection", value: user.stats.cosmicConnection, icon: "🌌" },
+        { name: "Rainbow Aura", value: user.stats.rainbowAura, icon: "🌈" },
+        { name: "Time Distortion", value: user.stats.timeDistortion, icon: "⏳" },
+        { name: "Gravity Resistance", value: user.stats.gravityResistance, icon: "🚀" },
+      ]
+    },
+    {
+      title: "🎪 Absurd Abilities",
+      stats: [
+        { name: "Spoon Bending Power", value: user.stats.spoonBendingPower, icon: "🥄" },
+        { name: "Cat Video Appreciation", value: user.stats.catVideoAppreciation, icon: "🐱" },
+        { name: "Existential Dread", value: user.stats.existentialDread, icon: "🕳️" },
+        { name: "Spontaneous Joy", value: user.stats.spontaneousJoy, icon: "🎉" },
+        { name: "Unicorn Belief", value: user.stats.unicornBelief, icon: "🦄" },
+      ]
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-3xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-300/30">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-purple-300/30">
+          <div className="flex items-center gap-4">
+            <span className="text-4xl">{user.emoji}</span>
+            <div>
+              <h2 className="text-2xl font-bold text-white">{user.name}</h2>
+              <div className="text-purple-300">{getLevelTitle(user.level)} • Level {user.level}</div>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Stats Categories */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {statCategories.map((category, categoryIndex) => (
+            <div key={categoryIndex} className="bg-white/10 rounded-2xl p-4 backdrop-blur">
+              <h3 className="text-lg font-bold text-white mb-4">{category.title}</h3>
+              <div className="space-y-3">
+                {category.stats.map((stat, statIndex) => (
+                  <div key={statIndex} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{stat.icon}</span>
+                      <span className="text-white text-sm">{stat.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 bg-black/30 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-purple-400 to-pink-400 h-2 rounded-full"
+                          style={{ width: `${stat.value}%` }}
+                        />
+                      </div>
+                      <span className="text-white font-bold text-sm w-8">{stat.value}</span>
+                      <span className="text-xs text-purple-300 w-20">{getStatDescription(stat.value)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer with regenerate button */}
+        <div className="mt-6 pt-4 border-t border-purple-300/30 text-center">
+          <p className="text-purple-300 text-sm mb-3">
+            These stats were randomly generated when you joined! They're completely meaningless but absolutely yours! 🎲
+          </p>
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-full font-semibold hover:scale-105 transition-transform"
+          >
+            🚀 Back to the Wall!
           </button>
         </div>
       </div>
@@ -527,7 +728,14 @@ export default function PartyWall() {
   const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('partywall_user');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsedUser = JSON.parse(saved);
+        // Migrate old users without stats
+        if (!parsedUser.stats) {
+          parsedUser.stats = generateRandomStats();
+        }
+        return parsedUser;
+      }
     }
     return null;
   });
@@ -536,6 +744,7 @@ export default function PartyWall() {
   const [inputAt, setInputAt] = useState<{xPct: number; yPct: number} | null>(null); // {xPct,yPct}
   const [adOpen, setAdOpen] = useState(false);
   const [xpGain, setXpGain] = useState<{show: boolean; amount: number}>({ show: false, amount: 0 });
+  const [statsModalOpen, setStatsModalOpen] = useState(false);
   const nowMs = useNow(1000);
 
   useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem("partywall_stream_url", streamUrl); }, [streamUrl]);
@@ -659,14 +868,17 @@ export default function PartyWall() {
           <div className="text-xs">Live Wall · last hour</div>
         </div>
         
-        {/* User Level Badge */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30">
+        {/* Clickable User Level Badge */}
+        <button 
+          onClick={() => setStatsModalOpen(true)}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30 hover:from-purple-500/30 hover:to-blue-500/30 transition-all cursor-pointer"
+        >
           <span className="text-lg">{user.emoji}</span>
           <div className="text-xs">
             <div className="font-semibold text-purple-200">Lv.{user.level} {user.name}</div>
-            <div className="text-purple-300">{user.xp} XP</div>
+            <div className="text-purple-300">{user.xp} XP • Click for stats!</div>
           </div>
-        </div>
+        </button>
         
         <div className="ml-auto flex items-center gap-2">
           <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs">Trigger Ad 💸</button>
@@ -711,6 +923,13 @@ export default function PartyWall() {
 
       {/* Pop‑up ads */}
       <AdModal open={adOpen} onClose={() => setAdOpen(false)} />
+      
+      {/* Character Stats Modal */}
+      <CharacterStatsModal 
+        user={user} 
+        isOpen={statsModalOpen} 
+        onClose={() => setStatsModalOpen(false)} 
+      />
     </div>
   );
 }
