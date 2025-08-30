@@ -19,6 +19,11 @@ jobs:
         node-version: '20'
         cache: 'npm'
     
+    - name: Setup frontend package files
+      run: |
+        cp package.frontend.json package.json
+        cp package-lock.frontend.json package-lock.json
+    
     - name: Install dependencies
       run: npm ci
     

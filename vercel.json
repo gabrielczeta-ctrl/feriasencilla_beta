@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cp package.frontend.json package.json && cp package-lock.frontend.json package-lock.json && npm install && next build",
+  "devCommand": "cp package.frontend.json package.json && cp package-lock.frontend.json package-lock.json && npm install && next dev",
+  "installCommand": "cp package.frontend.json package.json && cp package-lock.frontend.json package-lock.json && npm install"
+}
