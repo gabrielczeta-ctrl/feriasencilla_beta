@@ -165,6 +165,7 @@ function useWSNotes(wsUrl: string, ttlMs = HOUR_MS) {
               return exists ? prev : [msg.note, ...prev];
             });
           } else if (msg.type === "video" && msg.url) {
+            console.log("📺 Received video sync:", msg.url);
             setCurrentVideo(msg.url);
           }
         } catch {}
@@ -198,7 +199,11 @@ function useWSNotes(wsUrl: string, ttlMs = HOUR_MS) {
 
   async function updateVideo(url: string) {
     const ws = wsRef.current;
-    if (!ws || ws.readyState !== 1) throw new Error("WebSocket not connected");
+    if (!ws || ws.readyState !== 1) {
+      console.warn("🚫 WebSocket not connected, cannot sync video");
+      return;
+    }
+    console.log("📡 Sending video sync:", url);
     ws.send(JSON.stringify({ type: "video", url }));
   }
 
@@ -315,7 +320,11 @@ interface SetupPanelProps {
 function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: SetupPanelProps) {
   const handleVideoChange = (newUrl: string) => {
     setStreamUrl(newUrl);
-    onUpdateVideo(newUrl);
+    // Only sync if URL is actually different and not empty
+    if (newUrl.trim() && newUrl !== streamUrl) {
+      console.log('🎥 Syncing video globally:', newUrl);
+      onUpdateVideo(newUrl);
+    }
   };
 
   const xpProgress = getXPProgress(user);
@@ -329,7 +338,7 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
           <div className="flex items-center gap-3">
             <span className="text-3xl">{user.emoji}</span>
             <div>
-              <div className="font-bold text-lg">{user.name}</div>
+              <div className="font-bold text-lg">{user.name.slice(0, 4)}</div>
               <div className="text-sm text-purple-600 font-semibold">{title}</div>
             </div>
           </div>
@@ -385,37 +394,160 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
   );
 }
 
-// --- CRAZY RPG Character System ---
+// --- INSANE STAT DATABASE ---
+const STAT_DATABASE = {
+  // Completely Random Categories
+  "🎮 Gaming Skills": [
+    { name: "Rage Quit Resistance", icon: "🤬" },
+    { name: "Button Mashing Technique", icon: "🕹️" },
+    { name: "Loading Screen Patience", icon: "⏳" },
+    { name: "Noob Crushing Ability", icon: "💀" },
+    { name: "Achievement Hunting", icon: "🏆" },
+    { name: "Speedrun Potential", icon: "⚡" },
+  ],
+  
+  "🍕 Life Essentials": [
+    { name: "Pizza Folding Technique", icon: "🍕" },
+    { name: "Caffeine Tolerance", icon: "☕" },
+    { name: "Sleep Procrastination", icon: "😴" },
+    { name: "Snack Optimization", icon: "🍿" },
+    { name: "Comfort Zone Expansion", icon: "🛋️" },
+    { name: "Midnight Fridge Raids", icon: "🥪" },
+  ],
+
+  "🔮 Mystical Nonsense": [
+    { name: "Aura Reading Accuracy", icon: "✨" },
+    { name: "Crystal Ball Clarity", icon: "🔮" },
+    { name: "Horoscope Dependency", icon: "⭐" },
+    { name: "Manifestation Power", icon: "🌟" },
+    { name: "Chakra Alignment", icon: "🧘" },
+    { name: "Vibe Check Sensitivity", icon: "📡" },
+  ],
+
+  "🐱 Internet Culture": [
+    { name: "Meme Recognition Speed", icon: "🐸" },
+    { name: "Cat Video Appreciation", icon: "🐱" },
+    { name: "Troll Detection", icon: "👹" },
+    { name: "Rickroll Immunity", icon: "🎵" },
+    { name: "Comment Section Survival", icon: "💬" },
+    { name: "Viral Prediction", icon: "📈" },
+  ],
+
+  "🤡 Absurd Talents": [
+    { name: "Banana Peeling Efficiency", icon: "🍌" },
+    { name: "Rubber Duck Debugging", icon: "🦆" },
+    { name: "Spaghetti Twirling Mastery", icon: "🍝" },
+    { name: "Elevator Button Politics", icon: "🛗" },
+    { name: "WiFi Password Guessing", icon: "📶" },
+    { name: "Parallel Parking Anxiety", icon: "🚗" },
+  ],
+
+  "🌈 Personality Quirks": [
+    { name: "Social Battery Level", icon: "🔋" },
+    { name: "Awkward Silence Tolerance", icon: "😶" },
+    { name: "Small Talk Avoidance", icon: "💬" },
+    { name: "Overthinking Capacity", icon: "🤔" },
+    { name: "Random Fact Storage", icon: "🧠" },
+    { name: "Procrastination Creativity", icon: "⏰" },
+  ],
+
+  "🦄 Pure Fantasy": [
+    { name: "Unicorn Belief Level", icon: "🦄" },
+    { name: "Dragon Negotiation", icon: "🐉" },
+    { name: "Fairy Communication", icon: "🧚" },
+    { name: "Magic Potion Brewing", icon: "🧪" },
+    { name: "Teleportation Accuracy", icon: "✨" },
+    { name: "Mind Reading Ethics", icon: "👁️" },
+  ],
+
+  "🎭 Social Disasters": [
+    { name: "Dad Joke Delivery", icon: "👨" },
+    { name: "Karaoke Confidence", icon: "🎤" },
+    { name: "Dance Floor Courage", icon: "💃" },
+    { name: "Phone Call Anxiety", icon: "📞" },
+    { name: "Name Forgetting Rate", icon: "🏷️" },
+    { name: "Compliment Acceptance", icon: "😊" },
+  ],
+
+  "🌊 Weather Powers": [
+    { name: "Rain Prediction Accuracy", icon: "🌧️" },
+    { name: "Sunburn Resistance", icon: "☀️" },
+    { name: "Snow Day Manifesting", icon: "❄️" },
+    { name: "Wind Direction Control", icon: "💨" },
+    { name: "Thunder Fear Level", icon: "⛈️" },
+    { name: "Rainbow Summoning", icon: "🌈" },
+  ],
+
+  "🚀 Space Cadet": [
+    { name: "Alien Communication", icon: "👽" },
+    { name: "Zero Gravity Adaptation", icon: "🚀" },
+    { name: "Constellation Naming", icon: "⭐" },
+    { name: "Meteor Dodging", icon: "☄️" },
+    { name: "Black Hole Resistance", icon: "🕳️" },
+    { name: "Spaceship Parking", icon: "🛸" },
+  ]
+};
+
+// Randomly pick stats from the database
 interface CharacterStats {
-  // Core RPG Stats
-  strength: number;
-  intelligence: number;
-  charisma: number;
-  luck: number;
-  dexterity: number;
-  wisdom: number;
+  [key: string]: number; // Dynamic stats
+}
+
+function generateRandomStats(): CharacterStats {
+  const stats: CharacterStats = {};
+  const categories = Object.keys(STAT_DATABASE);
   
-  // WEIRD Stats
-  memeKnowledge: number;
-  caffeineAddiction: number;
-  procrastination: number;
-  socialAnxiety: number;
-  pizzaConsumption: number;
-  sleepDeprivation: number;
+  // Pick 3-5 random categories
+  const numCategories = 3 + Math.floor(Math.random() * 3);
+  const selectedCategories = categories
+    .sort(() => 0.5 - Math.random())
+    .slice(0, numCategories);
   
-  // Mystical Stats  
-  vibeEnergy: number;
-  cosmicConnection: number;
-  rainbowAura: number;
-  timeDistortion: number;
-  gravityResistance: number;
+  selectedCategories.forEach(category => {
+    const categoryStats = STAT_DATABASE[category as keyof typeof STAT_DATABASE];
+    // Pick 2-4 stats from each category
+    const numStats = 2 + Math.floor(Math.random() * 3);
+    const selectedStats = categoryStats
+      .sort(() => 0.5 - Math.random())
+      .slice(0, numStats);
+    
+    selectedStats.forEach(stat => {
+      const statKey = `${stat.icon} ${stat.name}`;
+      stats[statKey] = Math.floor(Math.random() * 100) + 1;
+    });
+  });
   
-  // Absurd Stats
-  spoonBendingPower: number;
-  catVideoAppreciation: number;
-  existentialDread: number;
-  spontaneousJoy: number;
-  unicornBelief: number;
+  return stats;
+}
+
+// Get stat categories for display
+function getStatCategoriesForDisplay(user: User) {
+  const categories: { title: string; stats: { name: string; value: number; icon: string }[] }[] = [];
+  const statEntries = Object.entries(user.stats);
+  
+  // Group stats by emoji (rough category detection)
+  const grouped: { [key: string]: { name: string; value: number; icon: string }[] } = {};
+  
+  statEntries.forEach(([key, value]) => {
+    const icon = key.split(' ')[0];
+    const name = key.substring(key.indexOf(' ') + 1);
+    
+    if (!grouped[icon]) {
+      grouped[icon] = [];
+    }
+    grouped[icon].push({ name, value, icon });
+  });
+  
+  // Convert to category format
+  Object.entries(grouped).forEach(([icon, stats], index) => {
+    const categoryNames = ["Your Random Powers", "Weird Abilities", "Secret Skills", "Hidden Talents"];
+    categories.push({
+      title: `${icon} ${categoryNames[index % categoryNames.length]}`,
+      stats
+    });
+  });
+  
+  return categories;
 }
 
 interface User {
@@ -429,41 +561,6 @@ interface User {
   stats: CharacterStats;
 }
 
-// Generate completely random character stats
-function generateRandomStats(): CharacterStats {
-  const randomStat = () => Math.floor(Math.random() * 100) + 1;
-  return {
-    // Core RPG Stats (1-100)
-    strength: randomStat(),
-    intelligence: randomStat(),
-    charisma: randomStat(),
-    luck: randomStat(),
-    dexterity: randomStat(),
-    wisdom: randomStat(),
-    
-    // WEIRD Stats (1-100)
-    memeKnowledge: randomStat(),
-    caffeineAddiction: randomStat(),
-    procrastination: randomStat(),
-    socialAnxiety: randomStat(),
-    pizzaConsumption: randomStat(),
-    sleepDeprivation: randomStat(),
-    
-    // Mystical Stats (1-100)
-    vibeEnergy: randomStat(),
-    cosmicConnection: randomStat(),
-    rainbowAura: randomStat(),
-    timeDistortion: randomStat(),
-    gravityResistance: randomStat(),
-    
-    // Absurd Stats (1-100)
-    spoonBendingPower: randomStat(),
-    catVideoAppreciation: randomStat(),
-    existentialDread: randomStat(),
-    spontaneousJoy: randomStat(),
-    unicornBelief: randomStat(),
-  };
-}
 
 // Get stat description based on value
 function getStatDescription(value: number): string {
@@ -611,60 +708,17 @@ interface CharacterStatsModalProps {
 function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps) {
   if (!isOpen) return null;
 
-  const statCategories = [
-    {
-      title: "⚔️ Core RPG Stats",
-      stats: [
-        { name: "Strength", value: user.stats.strength, icon: "💪" },
-        { name: "Intelligence", value: user.stats.intelligence, icon: "🧠" },
-        { name: "Charisma", value: user.stats.charisma, icon: "😎" },
-        { name: "Luck", value: user.stats.luck, icon: "🍀" },
-        { name: "Dexterity", value: user.stats.dexterity, icon: "🤸" },
-        { name: "Wisdom", value: user.stats.wisdom, icon: "🦉" },
-      ]
-    },
-    {
-      title: "🌐 Weird Life Stats",
-      stats: [
-        { name: "Meme Knowledge", value: user.stats.memeKnowledge, icon: "🐸" },
-        { name: "Caffeine Addiction", value: user.stats.caffeineAddiction, icon: "☕" },
-        { name: "Procrastination", value: user.stats.procrastination, icon: "⏰" },
-        { name: "Social Anxiety", value: user.stats.socialAnxiety, icon: "😰" },
-        { name: "Pizza Consumption", value: user.stats.pizzaConsumption, icon: "🍕" },
-        { name: "Sleep Deprivation", value: user.stats.sleepDeprivation, icon: "😴" },
-      ]
-    },
-    {
-      title: "🔮 Mystical Powers",
-      stats: [
-        { name: "Vibe Energy", value: user.stats.vibeEnergy, icon: "✨" },
-        { name: "Cosmic Connection", value: user.stats.cosmicConnection, icon: "🌌" },
-        { name: "Rainbow Aura", value: user.stats.rainbowAura, icon: "🌈" },
-        { name: "Time Distortion", value: user.stats.timeDistortion, icon: "⏳" },
-        { name: "Gravity Resistance", value: user.stats.gravityResistance, icon: "🚀" },
-      ]
-    },
-    {
-      title: "🎪 Absurd Abilities",
-      stats: [
-        { name: "Spoon Bending Power", value: user.stats.spoonBendingPower, icon: "🥄" },
-        { name: "Cat Video Appreciation", value: user.stats.catVideoAppreciation, icon: "🐱" },
-        { name: "Existential Dread", value: user.stats.existentialDread, icon: "🕳️" },
-        { name: "Spontaneous Joy", value: user.stats.spontaneousJoy, icon: "🎉" },
-        { name: "Unicorn Belief", value: user.stats.unicornBelief, icon: "🦄" },
-      ]
-    }
-  ];
+  const statCategories = getStatCategoriesForDisplay(user);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
-      <div className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-3xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-300/30">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-xl sm:rounded-3xl p-4 sm:p-6 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-300/30">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-purple-300/30">
-          <div className="flex items-center gap-4">
-            <span className="text-4xl">{user.emoji}</span>
+        <div className="flex items-center justify-between mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-purple-300/30">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <span className="text-2xl sm:text-4xl">{user.emoji}</span>
             <div>
-              <h2 className="text-2xl font-bold text-white">{user.name}</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-white">{user.name.slice(0, 4)}</h2>
               <div className="text-purple-300">{getLevelTitle(user.level)} • Level {user.level}</div>
             </div>
           </div>
@@ -677,10 +731,10 @@ function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps
         </div>
 
         {/* Stats Categories */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
           {statCategories.map((category, categoryIndex) => (
-            <div key={categoryIndex} className="bg-white/10 rounded-2xl p-4 backdrop-blur">
-              <h3 className="text-lg font-bold text-white mb-4">{category.title}</h3>
+            <div key={categoryIndex} className="bg-white/10 rounded-xl sm:rounded-2xl p-3 sm:p-4 backdrop-blur">
+              <h3 className="text-base sm:text-lg font-bold text-white mb-3 sm:mb-4">{category.title}</h3>
               <div className="space-y-3">
                 {category.stats.map((stat, statIndex) => (
                   <div key={statIndex} className="flex items-center justify-between">
@@ -818,13 +872,14 @@ export default function PartyWall() {
     
     // Add user info to message with level
     const levelBadge = user.level >= 5 ? `[Lv.${newLevel}]` : "";
-    const payload = { text: `${user.emoji} ${user.name} ${levelBadge}: ${text}`, ...inputAt };
+    const payload = { text: `${user.emoji} ${user.name.slice(0, 4)} ${levelBadge}: ${text}`, ...inputAt };
     setInputAt(null);
     try { await postNote(payload); } catch (e) { console.error(e); alert("Failed to post message!"); }
   }
 
-  // Use currentVideo from WebSocket if available, otherwise use local streamUrl
+  // Use currentVideo from WebSocket if available, otherwise use local streamUrl  
   const activeStreamUrl = currentVideo || streamUrl;
+  console.log("🎬 Active stream URL:", activeStreamUrl, { currentVideo, streamUrl });
   const embedUrl = useMemo(() => toEmbedUrl(activeStreamUrl, typeof window !== 'undefined' ? window.location.hostname : ''), [activeStreamUrl]);
 
   // Show login screen if no user
@@ -833,7 +888,7 @@ export default function PartyWall() {
   }
 
   return (
-    <div ref={containerRef} className="relative w-full h-[100dvh] overflow-hidden bg-black text-white" onClick={onBackgroundClick}>
+    <div ref={containerRef} className="relative w-full min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-black text-white" onClick={onBackgroundClick}>
       <ParticleField />
 
       {/* Floating notes */}
@@ -862,8 +917,8 @@ export default function PartyWall() {
       </AnimatePresence>
 
       {/* Top HUD */}
-      <div className="ui pointer-events-auto absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/10">
+      <div className="ui pointer-events-auto absolute top-0 left-0 right-0 p-2 sm:p-3 flex items-center gap-1 sm:gap-2 z-10 bg-black/20 backdrop-blur-sm">
+        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/10">
           <div className={`size-2 rounded-full ${status === 'connected' ? 'bg-green-400' : status === 'connecting' ? 'bg-yellow-300' : 'bg-red-500'} animate-pulse`} />
           <div className="text-xs">Live Wall · last hour</div>
         </div>
@@ -871,19 +926,19 @@ export default function PartyWall() {
         {/* Clickable User Level Badge */}
         <button 
           onClick={() => setStatsModalOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30 hover:from-purple-500/30 hover:to-blue-500/30 transition-all cursor-pointer"
+          className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30 hover:from-purple-500/30 hover:to-blue-500/30 transition-all cursor-pointer"
         >
-          <span className="text-lg">{user.emoji}</span>
-          <div className="text-xs">
-            <div className="font-semibold text-purple-200">Lv.{user.level} {user.name}</div>
-            <div className="text-purple-300">{user.xp} XP • Click for stats!</div>
+          <span className="text-sm sm:text-lg">{user.emoji}</span>
+          <div className="text-xs hidden sm:block">
+            <div className="font-semibold text-purple-200">Lv.{user.level} {user.name.slice(0, 4)}</div>
+            <div className="text-purple-300">{user.xp} XP</div>
           </div>
         </button>
         
-        <div className="ml-auto flex items-center gap-2">
-          <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs">Trigger Ad 💸</button>
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs hidden sm:inline-block">💸</button>
           <details className="[&_summary]:list-none">
-            <summary className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">Profile ⚙️</summary>
+            <summary className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">⚙️</summary>
             <div className="absolute right-3 mt-2 w-[min(92vw,36rem)]">
               <SetupPanel streamUrl={streamUrl} setStreamUrl={setStreamUrl} onUpdateVideo={updateVideo} user={user} onLogout={handleLogout} />
             </div>
@@ -908,18 +963,16 @@ export default function PartyWall() {
       </AnimatePresence>
 
       {/* Livestream dock */}
-      <div className="ui pointer-events-auto absolute bottom-3 right-3 w-[min(92vw,560px)] h-[315px] rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/40 backdrop-blur">
+      <div className="ui pointer-events-auto absolute bottom-2 sm:bottom-3 right-2 sm:right-3 w-[min(95vw,280px)] sm:w-[min(92vw,560px)] h-[180px] sm:h-[315px] rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/40 backdrop-blur">
         {embedUrl ? (
           <iframe title="Livestream" src={embedUrl} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
         ) : (
           <div className="w-full h-full grid place-items-center text-center p-6 text-white/80">
-            <div><div className="font-semibold">No stream yet</div><div className="text-sm mt-1">Open ⚙️ Setup and paste a YouTube/Twitch URL.</div></div>
+            <div><div className="font-semibold text-sm sm:text-base">No stream</div></div>
           </div>
         )}
       </div>
 
-      {/* Footer hint */}
-      <div className="ui pointer-events-none absolute bottom-3 left-3 text-xs text-white/70">Tip: click anywhere to drop a message. They fade after 1 hour.</div>
 
       {/* Pop‑up ads */}
       <AdModal open={adOpen} onClose={() => setAdOpen(false)} />
