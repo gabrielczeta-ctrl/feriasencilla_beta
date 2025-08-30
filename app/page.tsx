@@ -318,22 +318,57 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
     onUpdateVideo(newUrl);
   };
 
+  const xpProgress = getXPProgress(user);
+  const title = getLevelTitle(user.level);
+
   return (
     <div className="p-4 rounded-2xl bg-white/90 border border-black/10 shadow-xl space-y-4 text-black">
-      <div className="flex items-center justify-between pb-3 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">{user.emoji}</span>
-          <div>
-            <div className="font-semibold">{user.name}</div>
-            <div className="text-xs text-gray-500">Logged in</div>
+      {/* RPG User Profile */}
+      <div className="pb-3 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{user.emoji}</span>
+            <div>
+              <div className="font-bold text-lg">{user.name}</div>
+              <div className="text-sm text-purple-600 font-semibold">{title}</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-blue-600">Lv.{user.level}</div>
+            <button 
+              onClick={onLogout}
+              className="px-2 py-1 rounded-full bg-red-100 hover:bg-red-200 text-red-700 text-xs mt-1"
+            >
+              Logout
+            </button>
           </div>
         </div>
-        <button 
-          onClick={onLogout}
-          className="px-3 py-1 rounded-full bg-red-100 hover:bg-red-200 text-red-700 text-xs"
-        >
-          Logout
-        </button>
+        
+        {/* XP Progress Bar */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-gray-600">
+            <span>XP: {xpProgress.current}/{xpProgress.needed}</span>
+            <span>{Math.round(xpProgress.progress * 100)}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${xpProgress.progress * 100}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 gap-4 mt-3 text-center">
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-2">
+            <div className="text-lg font-bold text-blue-600">{user.messagesSent}</div>
+            <div className="text-xs text-gray-600">Messages</div>
+          </div>
+          <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-2">
+            <div className="text-lg font-bold text-purple-600">{user.xp}</div>
+            <div className="text-xs text-gray-600">Total XP</div>
+          </div>
+        </div>
       </div>
       
       <div>
@@ -350,11 +385,61 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
   );
 }
 
-// --- Simple Login System ---
+// --- RPG User System ---
 interface User {
   name: string;
   emoji: string;
   color: string;
+  xp: number;
+  level: number;
+  messagesSent: number;
+  joinedAt: number;
+}
+
+// XP required for each level (exponential growth)
+function getXPForLevel(level: number): number {
+  return Math.floor(10 * Math.pow(1.5, level - 1));
+}
+
+// Calculate level from total XP
+function getLevelFromXP(xp: number): number {
+  let level = 1;
+  let totalXPNeeded = 0;
+  while (totalXPNeeded <= xp) {
+    totalXPNeeded += getXPForLevel(level);
+    if (totalXPNeeded <= xp) level++;
+  }
+  return level;
+}
+
+// Get XP progress towards next level
+function getXPProgress(user: User): { current: number; needed: number; progress: number } {
+  const currentLevel = user.level;
+  const xpForCurrentLevel = getXPForLevel(currentLevel);
+  let xpUsedForPreviousLevels = 0;
+  
+  for (let i = 1; i < currentLevel; i++) {
+    xpUsedForPreviousLevels += getXPForLevel(i);
+  }
+  
+  const currentXPInLevel = user.xp - xpUsedForPreviousLevels;
+  const progress = Math.min(currentXPInLevel / xpForCurrentLevel, 1);
+  
+  return {
+    current: currentXPInLevel,
+    needed: xpForCurrentLevel,
+    progress
+  };
+}
+
+// Get level title based on level
+function getLevelTitle(level: number): string {
+  if (level >= 50) return "🌟 Wall Legend";
+  if (level >= 25) return "👑 VIP Member";
+  if (level >= 15) return "⚡ Power User";
+  if (level >= 10) return "🔥 Regular";
+  if (level >= 5) return "✨ Active";
+  return "🆕 Newbie";
 }
 
 const defaultEmojis = ["😎", "🦄", "🚀", "🔥", "⚡", "🌈", "👑", "💫", "🎯", "🎮", "🍕", "🎨"];
@@ -416,11 +501,19 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
           </div>
           
           <button 
-            onClick={() => name.trim() && onLogin({ name: name.trim(), emoji: selectedEmoji, color: selectedColor })}
+            onClick={() => name.trim() && onLogin({ 
+              name: name.trim(), 
+              emoji: selectedEmoji, 
+              color: selectedColor,
+              xp: 0,
+              level: 1,
+              messagesSent: 0,
+              joinedAt: Date.now()
+            })}
             disabled={!name.trim()}
             className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] transition-transform"
           >
-            🚀 Enter the Wall
+            🚀 Begin Your Journey
           </button>
         </div>
       </div>
@@ -442,6 +535,7 @@ export default function PartyWall() {
   const [wsUrl, setWsUrl] = useState(() => (typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_WS_URL || localStorage.getItem("partywall_ws_url") || "") : ""));
   const [inputAt, setInputAt] = useState<{xPct: number; yPct: number} | null>(null); // {xPct,yPct}
   const [adOpen, setAdOpen] = useState(false);
+  const [xpGain, setXpGain] = useState<{show: boolean; amount: number}>({ show: false, amount: 0 });
   const nowMs = useNow(1000);
 
   useEffect(() => { if (typeof window !== 'undefined') localStorage.setItem("partywall_stream_url", streamUrl); }, [streamUrl]);
@@ -486,8 +580,36 @@ export default function PartyWall() {
 
   async function submitNote(text: string) {
     if (!inputAt || !user) return;
-    // Add user info to message
-    const payload = { text: `${user.emoji} ${user.name}: ${text}`, ...inputAt };
+    
+    // Gain XP and level up!
+    const newXP = user.xp + 1;
+    const newLevel = getLevelFromXP(newXP);
+    const newMessageCount = user.messagesSent + 1;
+    const leveledUp = newLevel > user.level;
+    
+    // Update user with new stats
+    const updatedUser = { 
+      ...user, 
+      xp: newXP, 
+      level: newLevel, 
+      messagesSent: newMessageCount 
+    };
+    setUser(updatedUser);
+    
+    // Show XP gain animation
+    setXpGain({ show: true, amount: 1 });
+    setTimeout(() => setXpGain({ show: false, amount: 0 }), 2000);
+
+    // Show level up notification
+    if (leveledUp) {
+      setTimeout(() => {
+        alert(`🎉 LEVEL UP! You are now level ${newLevel} - ${getLevelTitle(newLevel)}! 🚀`);
+      }, 500);
+    }
+    
+    // Add user info to message with level
+    const levelBadge = user.level >= 5 ? `[Lv.${newLevel}]` : "";
+    const payload = { text: `${user.emoji} ${user.name} ${levelBadge}: ${text}`, ...inputAt };
     setInputAt(null);
     try { await postNote(payload); } catch (e) { console.error(e); alert("Failed to post message!"); }
   }
@@ -536,16 +658,42 @@ export default function PartyWall() {
           <div className={`size-2 rounded-full ${status === 'connected' ? 'bg-green-400' : status === 'connecting' ? 'bg-yellow-300' : 'bg-red-500'} animate-pulse`} />
           <div className="text-xs">Live Wall · last hour</div>
         </div>
+        
+        {/* User Level Badge */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30">
+          <span className="text-lg">{user.emoji}</span>
+          <div className="text-xs">
+            <div className="font-semibold text-purple-200">Lv.{user.level} {user.name}</div>
+            <div className="text-purple-300">{user.xp} XP</div>
+          </div>
+        </div>
+        
         <div className="ml-auto flex items-center gap-2">
           <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs">Trigger Ad 💸</button>
           <details className="[&_summary]:list-none">
-            <summary className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">Setup ⚙️</summary>
+            <summary className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">Profile ⚙️</summary>
             <div className="absolute right-3 mt-2 w-[min(92vw,36rem)]">
               <SetupPanel streamUrl={streamUrl} setStreamUrl={setStreamUrl} onUpdateVideo={updateVideo} user={user} onLogout={handleLogout} />
             </div>
           </details>
         </div>
       </div>
+      
+      {/* XP Gain Animation */}
+      <AnimatePresence>
+        {xpGain.show && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.8 }}
+            animate={{ opacity: 1, y: -20, scale: 1.2 }}
+            exit={{ opacity: 0, y: -40, scale: 0.5 }}
+            className="absolute top-20 left-1/2 transform -translate-x-1/2 pointer-events-none z-50"
+          >
+            <div className="bg-gradient-to-r from-green-400 to-blue-500 text-white px-4 py-2 rounded-full font-bold shadow-lg">
+              +{xpGain.amount} XP!
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Livestream dock */}
       <div className="ui pointer-events-auto absolute bottom-3 right-3 w-[min(92vw,560px)] h-[315px] rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/40 backdrop-blur">
