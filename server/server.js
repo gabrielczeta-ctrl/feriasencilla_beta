@@ -16,23 +16,33 @@ const NOTE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CHANNEL = "notes:channel";
 const ZKEY = "notes:z"; // sorted set of ids by expireAt
 
-const redis = new Redis(REDIS_URL, { lazyConnect: true });
-const pub = new Redis(REDIS_URL, { lazyConnect: true });
-const sub = new Redis(REDIS_URL, { lazyConnect: true });
-
-// Connect to Redis, but don't block server startup if it fails
+// Only create Redis clients if we have a real Redis URL
+let redis, pub, sub;
 let redisConnected = false;
-try {
-  console.log("🔄 Attempting Redis connection...");
-  await Promise.all([redis.connect(), pub.connect(), sub.connect()]);
-  await sub.subscribe(CHANNEL);
-  redisConnected = true;
-  console.log("✅ Redis connected successfully!");
-} catch (error) {
-  console.warn("⚠️ Redis connection failed, running without persistence:");
-  console.warn("   Error:", error.message);
-  console.warn("   Code:", error.code);
-  console.warn("   Using URL:", REDIS_URL.replace(/\/\/.*@/, "//***:***@"));
+
+// Check if we have a real Redis URL (not localhost fallback)
+const hasRedis = REDIS_URL && !REDIS_URL.includes('localhost:6379');
+
+if (hasRedis) {
+  redis = new Redis(REDIS_URL, { lazyConnect: true });
+  pub = new Redis(REDIS_URL, { lazyConnect: true });
+  sub = new Redis(REDIS_URL, { lazyConnect: true });
+
+  // Connect to Redis, but don't block server startup if it fails
+  try {
+    console.log("🔄 Attempting Redis connection...");
+    await Promise.all([redis.connect(), pub.connect(), sub.connect()]);
+    await sub.subscribe(CHANNEL);
+    redisConnected = true;
+    console.log("✅ Redis connected successfully!");
+  } catch (error) {
+    console.warn("⚠️ Redis connection failed, running without persistence:");
+    console.warn("   Error:", error.message);
+    console.warn("   Code:", error.code);
+    console.warn("   Using URL:", REDIS_URL.replace(/\/\/.*@/, "//***:***@"));
+  }
+} else {
+  console.log("🔄 No Redis service configured, running without persistence");
 }
 
 const server = http.createServer((req, res) => {
@@ -97,7 +107,7 @@ wss.on("connection", (ws, req) => {
 });
 
 // Redis pubsub → fan out to WS clients (only if Redis connected)
-if (redisConnected) {
+if (redisConnected && sub) {
   sub.on("message", (_, raw) => {
     try { broadcast(JSON.parse(raw)); } catch {}
   });
