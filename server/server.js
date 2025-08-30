@@ -4,7 +4,14 @@ import Redis from "ioredis";
 import crypto from "crypto";
 
 const PORT = process.env.PORT || 8080;
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+// Railway Redis can use different environment variable names
+const REDIS_URL = process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || process.env.REDIS_PUBLIC_URL || "redis://localhost:6379";
+
+console.log("🔍 Redis URL:", REDIS_URL.replace(/\/\/.*@/, "//***:***@")); // Log URL with masked credentials
+
+// Debug: List available Redis environment variables
+const redisEnvVars = Object.keys(process.env).filter(key => key.includes('REDIS'));
+console.log("🔍 Available Redis env vars:", redisEnvVars.length > 0 ? redisEnvVars : "None found");
 const NOTE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CHANNEL = "notes:channel";
 const ZKEY = "notes:z"; // sorted set of ids by expireAt
@@ -16,12 +23,16 @@ const sub = new Redis(REDIS_URL, { lazyConnect: true });
 // Connect to Redis, but don't block server startup if it fails
 let redisConnected = false;
 try {
+  console.log("🔄 Attempting Redis connection...");
   await Promise.all([redis.connect(), pub.connect(), sub.connect()]);
   await sub.subscribe(CHANNEL);
   redisConnected = true;
-  console.log("✅ Redis connected");
+  console.log("✅ Redis connected successfully!");
 } catch (error) {
-  console.warn("⚠️ Redis connection failed, running without persistence:", error.message);
+  console.warn("⚠️ Redis connection failed, running without persistence:");
+  console.warn("   Error:", error.message);
+  console.warn("   Code:", error.code);
+  console.warn("   Using URL:", REDIS_URL.replace(/\/\/.*@/, "//***:***@"));
 }
 
 const server = http.createServer((req, res) => {
