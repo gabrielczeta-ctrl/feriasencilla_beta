@@ -86,7 +86,8 @@ wss.on("connection", (ws, req) => {
     if (msg.type === "hello") {
       const notes = await fetchActiveNotes();
       const currentVideo = await getCurrentVideo();
-      ws.send(JSON.stringify({ type: "state", notes, currentVideo }));
+      const strokes = await fetchDrawingStrokes();
+      ws.send(JSON.stringify({ type: "state", notes, currentVideo, strokes }));
       return;
     }
 
@@ -133,6 +134,66 @@ wss.on("connection", (ws, req) => {
       // Always broadcast locally
       broadcast({ type: "new", note });
     }
+
+    // Handle drawing strokes
+    if (msg.type === "drawing_stroke" && msg.stroke) {
+      const ip = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(ip, 100)) return; // Higher frequency for drawing
+      
+      const stroke = sanitizeStroke(msg.stroke);
+      if (!stroke) return;
+
+      const strokeId = crypto.randomUUID();
+      const strokeMsg = {
+        type: "drawing_stroke",
+        stroke: {
+          ...stroke,
+          id: strokeId,
+          timestamp: Date.now()
+        }
+      };
+
+      // Store stroke persistently (only if Redis is connected)
+      if (redisConnected && redis) {
+        try {
+          await redis.set(`stroke:${strokeId}`, JSON.stringify(strokeMsg.stroke), "EX", 24 * 60 * 60); // 24 hours
+          await redis.zadd("strokes:z", strokeMsg.stroke.timestamp, strokeId);
+          await pub.publish(CHANNEL, JSON.stringify(strokeMsg));
+        } catch (error) {
+          console.warn("Redis stroke operation failed:", error.message);
+        }
+      }
+      
+      broadcast(strokeMsg);
+    }
+
+    // Handle drawing clear
+    if (msg.type === "drawing_clear") {
+      const ip = req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (!rateLimit(ip, 5000)) return; // Rate limit clear operations
+      
+      const clearMsg = {
+        type: "drawing_clear",
+        timestamp: Date.now()
+      };
+
+      // Clear all strokes from Redis
+      if (redisConnected && redis) {
+        try {
+          const strokeIds = await redis.zrange("strokes:z", 0, -1);
+          if (strokeIds.length > 0) {
+            const keys = strokeIds.map((id) => `stroke:${id}`);
+            await redis.del(...keys);
+            await redis.del("strokes:z");
+          }
+          await pub.publish(CHANNEL, JSON.stringify(clearMsg));
+        } catch (error) {
+          console.warn("Redis clear operation failed:", error.message);
+        }
+      }
+      
+      broadcast(clearMsg);
+    }
   });
 });
 
@@ -160,6 +221,36 @@ async function getCurrentVideo() {
   } catch (error) {
     console.warn("Failed to fetch current video from Redis:", error.message);
     return null;
+  }
+}
+
+// Fetch drawing strokes from Redis
+async function fetchDrawingStrokes() {
+  if (!redisConnected || !redis) return [];
+  
+  try {
+    // Get all stroke IDs from the sorted set
+    const strokeIds = await redis.zrange("strokes:z", 0, -1);
+    if (strokeIds.length === 0) return [];
+    
+    // Fetch all stroke data
+    const keys = strokeIds.map((id) => `stroke:${id}`);
+    const strokesData = await redis.mget(keys);
+    
+    return strokesData
+      .filter(Boolean)
+      .map((data) => {
+        try {
+          return JSON.parse(data);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.timestamp - b.timestamp); // Sort by timestamp
+  } catch (error) {
+    console.warn("Failed to fetch drawing strokes from Redis:", error.message);
+    return [];
   }
 }
 
@@ -204,6 +295,32 @@ function sanitizeNote(n) {
   if (!text) return null;
   if (!(xPct >= 0 && xPct <= 100 && yPct >= 0 && yPct <= 100)) return null;
   return { text, xPct, yPct };
+}
+
+function sanitizeStroke(stroke) {
+  if (!stroke || !Array.isArray(stroke.points) || stroke.points.length < 1) return null;
+  
+  // Validate stroke properties
+  const tool = ['pen', 'brush', 'eraser'].includes(stroke.tool) ? stroke.tool : 'pen';
+  const color = typeof stroke.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(stroke.color) ? stroke.color : '#000000';
+  const size = Number(stroke.size);
+  if (!(size >= 1 && size <= 50)) return null;
+  
+  // Validate and normalize points
+  const points = stroke.points
+    .slice(0, 1000) // Limit points per stroke
+    .map(p => {
+      const x = Number(p.x);
+      const y = Number(p.y);
+      // Normalize to percentage coordinates for consistency across devices
+      if (!(x >= 0 && x <= 100 && y >= 0 && y <= 100)) return null;
+      return { x, y };
+    })
+    .filter(Boolean);
+    
+  if (points.length === 0) return null;
+  
+  return { tool, color, size, points };
 }
 
 server.on("upgrade", (req, socket, head) => {
