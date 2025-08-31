@@ -115,37 +115,75 @@ function ParticleField({ drawingCanvas }: { drawingCanvas?: HTMLCanvasElement | 
         const dx = p.x - mouse.x, dy = p.y - mouse.y; const d2 = dx * dx + dy * dy;
         if (d2 < 20000) { const f = 0.06; const inv = 1 / Math.sqrt(d2 + 0.001); p.vx += dx * inv * f; p.vy += dy * inv * f; }
         
-        // Drawing interaction - particles attracted to drawn pixels
+        // Enhanced drawing interaction - shader-like particle effects
         if (drawingImageData) {
           const canvasX = Math.floor((p.x / cvs.clientWidth) * drawingCanvas!.width);
           const canvasY = Math.floor((p.y / cvs.clientHeight) * drawingCanvas!.height);
           
           if (canvasX >= 0 && canvasX < drawingCanvas!.width && canvasY >= 0 && canvasY < drawingCanvas!.height) {
-            const pixelIndex = (canvasY * drawingCanvas!.width + canvasX) * 4;
-            const alpha = drawingImageData.data[pixelIndex + 3]; // Alpha channel
+            // Sample multiple pixels for smoother effects
+            let totalR = 0, totalG = 0, totalB = 0, totalA = 0, sampleCount = 0;
             
-            if (alpha > 128) { // If there's a visible drawing here
-              const attractionForce = 0.08;
-              const targetX = (canvasX / drawingCanvas!.width) * cvs.clientWidth;
-              const targetY = (canvasY / drawingCanvas!.height) * cvs.clientHeight;
-              const drawDx = targetX - p.x;
-              const drawDy = targetY - p.y;
-              const drawD2 = drawDx * drawDx + drawDy * drawDy;
-              
-              if (drawD2 < 10000) { // Within attraction range
-                const inv = 1 / Math.sqrt(drawD2 + 0.001);
-                p.vx += drawDx * inv * attractionForce;
-                p.vy += drawDy * inv * attractionForce;
+            for (let dx = -2; dx <= 2; dx++) {
+              for (let dy = -2; dy <= 2; dy++) {
+                const sampleX = canvasX + dx;
+                const sampleY = canvasY + dy;
                 
-                // Change particle color based on drawing
-                const r = drawingImageData.data[pixelIndex];
-                const g = drawingImageData.data[pixelIndex + 1];
-                const b = drawingImageData.data[pixelIndex + 2];
-                p.color = `rgba(${r},${g},${b},0.9)`;
+                if (sampleX >= 0 && sampleX < drawingCanvas!.width && 
+                    sampleY >= 0 && sampleY < drawingCanvas!.height) {
+                  const pixelIndex = (sampleY * drawingCanvas!.width + sampleX) * 4;
+                  totalR += drawingImageData.data[pixelIndex];
+                  totalG += drawingImageData.data[pixelIndex + 1];
+                  totalB += drawingImageData.data[pixelIndex + 2];
+                  totalA += drawingImageData.data[pixelIndex + 3];
+                  sampleCount++;
+                }
               }
-            } else {
-              // Reset to default color when not near drawing
-              p.color = "rgba(255,255,255,0.9)";
+            }
+            
+            if (sampleCount > 0) {
+              const avgR = totalR / sampleCount;
+              const avgG = totalG / sampleCount;
+              const avgB = totalB / sampleCount;
+              const avgA = totalA / sampleCount;
+              
+              if (avgA > 64) { // If there's drawing content nearby
+                const attractionForce = 0.12 * (avgA / 255); // Stronger attraction based on alpha
+                const targetX = (canvasX / drawingCanvas!.width) * cvs.clientWidth;
+                const targetY = (canvasY / drawingCanvas!.height) * cvs.clientHeight;
+                const drawDx = targetX - p.x;
+                const drawDy = targetY - p.y;
+                const drawD2 = drawDx * drawDx + drawDy * drawDy;
+                
+                if (drawD2 < 15000) { // Extended attraction range
+                  const inv = 1 / Math.sqrt(drawD2 + 0.001);
+                  p.vx += drawDx * inv * attractionForce;
+                  p.vy += drawDy * inv * attractionForce;
+                  
+                  // Color mixing with drawing colors
+                  const colorIntensity = Math.min(1, avgA / 128);
+                  const mixFactor = 0.3 + 0.7 * colorIntensity;
+                  
+                  // Create glowing effect based on drawing proximity
+                  const proximityGlow = Math.max(0, 1 - Math.sqrt(drawD2) / 100);
+                  const glowR = Math.min(255, avgR + proximityGlow * 50);
+                  const glowG = Math.min(255, avgG + proximityGlow * 50);
+                  const glowB = Math.min(255, avgB + proximityGlow * 50);
+                  
+                  p.color = `rgba(${Math.floor(glowR * mixFactor + 255 * (1 - mixFactor))},${Math.floor(glowG * mixFactor + 255 * (1 - mixFactor))},${Math.floor(glowB * mixFactor + 255 * (1 - mixFactor))},${0.7 + proximityGlow * 0.3})`;
+                  
+                  // Size variation based on drawing intensity
+                  p.r = 1 + Math.random() * 2 + proximityGlow * 1.5;
+                } else {
+                  // Gradual return to default
+                  p.color = `rgba(255,255,255,${0.7 + Math.sin(ts * 0.001 + p.t) * 0.2})`;
+                  p.r = 1 + Math.random() * 2;
+                }
+              } else {
+                // Subtle color variation even without drawing
+                p.color = `rgba(255,255,255,${0.8 + Math.sin(ts * 0.001 + p.t) * 0.1})`;
+                p.r = 1 + Math.random() * 2;
+              }
             }
           }
         }
@@ -460,101 +498,101 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
   );
 }
 
-// --- FERIASENCILLA MYTHOLOGY DATABASE ---
-// The FeriaSencilla Multiverse: A 2000s-2015 Internet Aesthetic Realm
-// Where Windows 98 aesthetics meet James Ferraro's hypnagogic vaporwave dreams
-// and early internet culture creates a digital liminal space of endless summer fairs
+// --- THE HYPNAGOGIC CODEX: FERIASENCILLA MYSTERIES ---
+// "In the mall of broken dreams, where escalators lead to nowhere
+//  and the muzak plays songs that were never written..."
+//                                    - James Ferraro, probably
 
 const STAT_DATABASE = {
-  // Core FeriaSencilla Abilities - The fundamental powers of digital summer
-  "🎡 FeriaCore Mastery": [
-    { name: "Carnival Ride Navigation", icon: "🎠" },
-    { name: "Cotton Candy Synthesis", icon: "🍭" },
-    { name: "Neon Light Harmonics", icon: "💡" },
-    { name: "Ticket Booth Persuasion", icon: "🎫" },
-    { name: "Funhouse Mirror Tolerance", icon: "🪞" },
-    { name: "Prize Counter Negotiation", icon: "🧸" },
+  // The Eternal Return of Summer '03
+  "🎡 Children of the Corn Dog": [
+    { name: "Navigate by Tilt-A-Whirl Logic", icon: "🎠" },
+    { name: "Spun Sugar Alchemy of Desire", icon: "🍭" },
+    { name: "Fluorescent Cathedral Frequency", icon: "💡" },
+    { name: "Ticket Stub Semiotics", icon: "🎫" },
+    { name: "Mirror Maze Ego Death Resistance", icon: "🪞" },
+    { name: "Ring Toss Futility Acceptance", icon: "🧸" },
   ],
   
-  "💿 Hypnagogic Media Arts": [
-    { name: "VHS Glitch Channeling", icon: "📼" },
-    { name: "Mall Muzak Composition", icon: "🎵" },
-    { name: "MIDI Polyphony Control", icon: "🎹" },
-    { name: "Lowfi Texture Weaving", icon: "📺" },
-    { name: "Digital Nostalgia Synthesis", icon: "💾" },
-    { name: "Elevator Music Transcendence", icon: "🎶" },
+  "💿 Hauntology Broadcasting Corp": [
+    { name: "Channel Static Ghost Frequencies", icon: "📼" },
+    { name: "Compose Phantom Elevator Hymns", icon: "🎵" },
+    { name: "Summon Casio Demons (MT-32)", icon: "🎹" },
+    { name: "Weave Lo-Fi Memory Palaces", icon: "📺" },
+    { name: "Archive Yesterday's Tomorrows", icon: "💾" },
+    { name: "Ascend Via Background Music", icon: "🎶" },
   ],
 
-  "🖥️ Windows 98 Shamanism": [
-    { name: "Start Menu Meditation", icon: "⊞" },
-    { name: "Screensaver Hypnosis", icon: "🌀" },
-    { name: "Blue Screen Immunity", icon: "💙" },
-    { name: "Dial-up Patience Mastery", icon: "📞" },
-    { name: "Registry Editing Divination", icon: "📁" },
-    { name: "Clippy Communication", icon: "📎" },
+  "🖥️ Priests of the Blue Screen": [
+    { name: "Meditate on Icon Arrangements", icon: "⊞" },
+    { name: "Induce Fractal Screensaver Trances", icon: "🌀" },
+    { name: "Commune with Error Messages", icon: "💙" },
+    { name: "Practice Dial-Tone Zen Patience", icon: "📞" },
+    { name: "Read Registry Tea Leaves", icon: "📁" },
+    { name: "Speak Fluent Paperclip", icon: "📎" },
   ],
 
-  "🌐 Early Web Archaeology": [
-    { name: "GeoCities Temple Building", icon: "🏠" },
-    { name: "Flash Animation Sorcery", icon: "⚡" },
-    { name: "HTML Table Mastery", icon: "📋" },
-    { name: "Animated GIF Crafting", icon: "✨" },
-    { name: "Web Ring Navigation", icon: "🔗" },
-    { name: "Under Construction Aesthetics", icon: "🚧" },
+  "🌐 Archaeologists of Web 1.0": [
+    { name: "Build Shrine.Cities in Cyberspace", icon: "🏠" },
+    { name: "Animate the Dead Pixels", icon: "⚡" },
+    { name: "Master the Ancient Table Arts", icon: "📋" },
+    { name: "Birth .GIFs from Pure Thought", icon: "✨" },
+    { name: "Follow the Circular Logic Rings", icon: "🔗" },
+    { name: "Worship Eternal Construction", icon: "🚧" },
   ],
 
-  "📱 Proto-Social Networking": [
-    { name: "MSN Messenger Poetry", icon: "💬" },
-    { name: "MySpace Top 8 Politics", icon: "👥" },
-    { name: "Profile Song Curation", icon: "🎧" },
-    { name: "Away Message Philosophy", icon: "💭" },
-    { name: "Emoticon Fluency", icon: "😊" },
-    { name: "Webcam Artistry", icon: "📷" },
+  "📱 Prophets of Pre-Social": [
+    { name: "Channel MSN Oracle Wisdom", icon: "💬" },
+    { name: "Navigate Top 8 Heart Politics", icon: "👥" },
+    { name: "Curate Soul-Soundtrack Identities", icon: "🎧" },
+    { name: "Craft Away-Message Koans", icon: "💭" },
+    { name: "Speak Ancient Emoticon Tongues", icon: "😊" },
+    { name: "Practice Webcam Séances", icon: "📷" },
   ],
 
-  "🌴 Vaporwave Consciousness": [
-    { name: "A E S T H E T I C Recognition", icon: "🌺" },
-    { name: "Pastel Gradient Channeling", icon: "🌈" },
-    { name: "Synthwave Time Dilation", icon: "🕐" },
-    { name: "Marble Bust Communion", icon: "🗿" },
-    { name: "Grid Pattern Navigation", icon: "⬜" },
-    { name: "Sunset Frequency Tuning", icon: "🌅" },
+  "🌴 Disciples of A E S T H E T I C": [
+    { name: "Recognize Pink Flamingo Truths", icon: "🌺" },
+    { name: "Channel Miami Vice Chakras", icon: "🌈" },
+    { name: "Dilate Time via Outrun Physics", icon: "🕐" },
+    { name: "Commune with Marble Caesar Ghosts", icon: "🗿" },
+    { name: "Navigate Neon Grid Purgatory", icon: "⬜" },
+    { name: "Tune Into Sunset Emotional FM", icon: "🌅" },
   ],
 
-  "🎮 Y2K Gaming Mastery": [
-    { name: "LAN Party Coordination", icon: "🖥️" },
-    { name: "Cheat Code Archaeology", icon: "🗝️" },
-    { name: "Demo Disk Curation", icon: "💿" },
-    { name: "Mod Installation Wizardry", icon: "🔧" },
-    { name: "High Score Immortalization", icon: "🏆" },
-    { name: "Loading Screen Zen", icon: "⏳" },
+  "🎮 Custodians of the Last LAN": [
+    { name: "Orchestrate Ethernet Rituals", icon: "🖥️" },
+    { name: "Excavate IDKFA Rune Meanings", icon: "🗝️" },
+    { name: "Curate Shareware Relic Collections", icon: "💿" },
+    { name: "Practice Installation Disk Sorcery", icon: "🔧" },
+    { name: "Engrave High Scores in Eternity", icon: "🏆" },
+    { name: "Achieve Loading Bar Enlightenment", icon: "⏳" },
   ],
 
-  "📼 Liminal Space Navigation": [
-    { name: "Empty Mall Exploration", icon: "🏬" },
-    { name: "Poolrooms Pathfinding", icon: "🏊" },
-    { name: "Backrooms Level Mapping", icon: "🚪" },
-    { name: "Fluorescent Hum Interpretation", icon: "💡" },
-    { name: "Beige Architecture Appreciation", icon: "🏢" },
-    { name: "Temporal Echo Detection", icon: "👻" },
+  "📼 Walkers in Empty Spaces": [
+    { name: "Explore Retail Apocalypse Ruins", icon: "🏬" },
+    { name: "Map Chlorine Dream Territories", icon: "🏊" },
+    { name: "Chart Beige Maze Topologies", icon: "🚪" },
+    { name: "Decode 60Hz Humming Prophecies", icon: "💡" },
+    { name: "Find Beauty in Corporate Void", icon: "🏢" },
+    { name: "Hear Echoes of Never-Was", icon: "👻" },
   ],
 
-  "🔊 Sound Collage Mastery": [
-    { name: "Sample Archaeology", icon: "🎵" },
-    { name: "Tape Loop Meditation", icon: "🔄" },
-    { name: "Field Recording Divination", icon: "🎙️" },
-    { name: "Frequency Drift Surfing", icon: "📻" },
-    { name: "Ambient Texture Layering", icon: "🌊" },
-    { name: "Plunderphonics Ethics", icon: "⚖️" },
+  "🔊 Archivists of Found Sound": [
+    { name: "Unearth Forgotten Sample Ghosts", icon: "🎵" },
+    { name: "Loop Time Until It Breaks", icon: "🔄" },
+    { name: "Record the Spaces Between", icon: "🎙️" },
+    { name: "Surf Shortwave Nostalgia Waves", icon: "📻" },
+    { name: "Layer Memories Like Sediment", icon: "🌊" },
+    { name: "Navigate Copyright Purgatory", icon: "⚖️" },
   ],
 
-  "🌙 Digital Oneirism": [
-    { name: "Dream Journal Encryption", icon: "📔" },
-    { name: "REM Sleep Hacking", icon: "😴" },
-    { name: "Lucid Web Browsing", icon: "🌐" },
-    { name: "Subconscious Meme Processing", icon: "🧠" },
-    { name: "Hypnagogic State Maintenance", icon: "🌀" },
-    { name: "Sleep Paralysis Navigation", icon: "👁️" },
+  "🌙 Oneironauts of Digital REM": [
+    { name: "Encrypt Dreams in Binary Prose", icon: "📔" },
+    { name: "Hack Sleep.exe Directly", icon: "😴" },
+    { name: "Browse Web While Dreaming", icon: "🌐" },
+    { name: "Process Memes Subconsciously", icon: "🧠" },
+    { name: "Maintain Twilight Consciousness", icon: "🌀" },
+    { name: "Navigate Paralysis Dimensions", icon: "👁️" },
   ]
 };
 
@@ -832,7 +870,7 @@ function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps
         {/* Footer with regenerate button */}
         <div className="mt-6 pt-4 border-t border-purple-300/30 text-center">
           <p className="text-purple-300 text-sm mb-3">
-            These FeriaSencilla powers were channeled from the digital carnival realm when you joined! Each stat reflects your connection to the endless summer fair of 2000s internet nostalgia! 🎲
+            These abilities manifested during your first login to the Hypnagogic Network. Each stat represents a fragment of your digital soul, encoded in the eternal summer of Web 1.0's ghost frequencies. 🎲
           </p>
           <button
             onClick={onClose}
@@ -878,6 +916,9 @@ export default function PartyWall() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [persistentDrawings, setPersistentDrawings] = useState<{id: string; imageData: string; createdAt: number}[]>([]);
   const [draggedNote, setDraggedNote] = useState<string | null>(null);
+  const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{x: number; y: number; noteId?: string} | null>(null);
+  const [notePhysics, setNotePhysics] = useState<{[key: string]: {vx: number; vy: number; bouncing: boolean}}>({});
 
   // Initialize canvas when entering draw mode
   useEffect(() => {
@@ -919,6 +960,34 @@ export default function PartyWall() {
     }
   }, []);
 
+  // Physics update loop for bouncing notes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNotePhysics(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(noteId => {
+          const physics = updated[noteId];
+          if (physics.bouncing) {
+            // Simple bounce physics with damping
+            physics.vx *= 0.98; // Air resistance
+            physics.vy *= 0.98;
+            
+            // Gravity (very light)
+            physics.vy += 0.1;
+            
+            // Boundary collision
+            if (Math.abs(physics.vx) < 0.1 && Math.abs(physics.vy) < 0.1) {
+              delete updated[noteId]; // Stop bouncing when velocity is low
+            }
+          }
+        });
+        return updated;
+      });
+    }, 16); // ~60fps
+    
+    return () => clearInterval(interval);
+  }, []);
+
   // Ad timer (random pop up every 30–60s)
   useEffect(() => {
     let active = true; function schedule() { const ms = 30000 + Math.random() * 30000; setTimeout(() => { if (!active) return; setAdOpen(true); schedule(); }, ms); }
@@ -931,6 +1000,18 @@ export default function PartyWall() {
     const target = e.target as HTMLElement; 
     if (target.closest && target.closest(".ui")) return;
     if (target.closest && target.closest(".canvas-area")) return;
+    
+    // Close context menu on background click
+    if (contextMenu) {
+      setContextMenu(null);
+      return;
+    }
+    
+    // Clear selections if clicking background without shift
+    if (!e.shiftKey) {
+      setSelectedNotes(new Set());
+    }
+    
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const xPct = clamp01((e.clientX - rect.left) / rect.width) * 100;
@@ -940,7 +1021,7 @@ export default function PartyWall() {
       return;
     }
     setInputAt({ xPct, yPct });
-  }, [canvasMode]);
+  }, [canvasMode, contextMenu]);
 
   async function submitNote(text: string) {
     if (!inputAt || !user) return;
@@ -1045,7 +1126,15 @@ export default function PartyWall() {
   }
 
   return (
-    <div ref={containerRef} className="relative w-full min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-black text-white" onClick={onBackgroundClick}>
+    <div 
+      ref={containerRef} 
+      className="relative w-full min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-black text-white" 
+      onClick={onBackgroundClick}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
+    >
       <ParticleField drawingCanvas={canvasRef.current} />
 
       {/* Persistent Drawing Layer */}
@@ -1068,6 +1157,8 @@ export default function PartyWall() {
           {notes.map((n) => {
             const age = nowMs - n.createdAt; const life = clamp01(1 - age / HOUR_MS); const scale = 0.9 + 0.2 * life; const opacity = 0.2 + 0.8 * life;
             const isDragging = draggedNote === n.id;
+            const isSelected = selectedNotes.has(n.id);
+            const physics = notePhysics[n.id];
             return (
               <motion.div 
                 key={n.id} 
@@ -1076,17 +1167,39 @@ export default function PartyWall() {
                 exit={{ opacity: 0, scale: 0.8 }} 
                 transition={{ type: "spring", stiffness: 200, damping: 20 }} 
                 className={`absolute font-semibold drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)] ${
-                  isDragging ? 'pointer-events-auto cursor-grabbing z-50' : canvasMode === 'draw' ? 'pointer-events-none select-none' : 'pointer-events-auto cursor-grab'
+                  isDragging ? 'pointer-events-auto cursor-grabbing z-50' : 
+                  canvasMode === 'draw' ? 'pointer-events-none select-none' : 
+                  'pointer-events-auto cursor-grab'
+                } ${
+                  isSelected ? 'ring-2 ring-yellow-400/50 scale-105' : ''
                 }`}
                 style={{ 
                   left: `${n.xPct}%`, 
                   top: `${n.yPct}%`, 
                   transform: "translate(-50%, -50%)",
-                  zIndex: isDragging ? 50 : 10
+                  zIndex: isDragging ? 50 : isSelected ? 20 : 10,
+                  filter: physics?.bouncing ? 'hue-rotate(45deg) saturate(150%)' : 'none'
                 }}
                 drag={canvasMode !== 'draw'}
                 dragMomentum={false}
                 onDragStart={() => setDraggedNote(n.id)}
+                onClick={(e) => {
+                  if (e.shiftKey) {
+                    e.stopPropagation();
+                    const newSelected = new Set(selectedNotes);
+                    if (newSelected.has(n.id)) {
+                      newSelected.delete(n.id);
+                    } else {
+                      newSelected.add(n.id);
+                    }
+                    setSelectedNotes(newSelected);
+                  }
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setContextMenu({ x: e.clientX, y: e.clientY, noteId: n.id });
+                }}
                 onDragEnd={(event, info) => {
                   setDraggedNote(null);
                   if (!containerRef.current) return;
@@ -1095,12 +1208,23 @@ export default function PartyWall() {
                   const newXPct = clamp01(info.point.x / rect.width) * 100;
                   const newYPct = clamp01(info.point.y / rect.height) * 100;
                   
-                  // Update note position locally (for immediate feedback)
-                  // You might want to send this to the server later
-                  // For now, the position update is just visual
+                  // Send position update via WebSocket for real-time sync
+                  const ws = wsRef.current;
+                  if (ws && ws.readyState === 1) {
+                    ws.send(JSON.stringify({ 
+                      type: "move", 
+                      noteId: n.id, 
+                      xPct: newXPct, 
+                      yPct: newYPct 
+                    }));
+                  }
                 }}
               >
-                <div className="px-3 py-2 rounded-2xl max-w-xs" style={{ background: "rgba(255,255,255,0.14)", backdropFilter: "blur(8px)" }}>
+                <div 
+                  className="px-3 py-2 rounded-2xl max-w-xs" 
+                  style={{ background: "rgba(255,255,255,0.14)", backdropFilter: "blur(8px)" }}
+                  data-note-id={n.id}
+                >
                   <div className="text-sm leading-tight">{n.text}</div>
                   {n.imageData && (
                     <div className="mt-2">
@@ -1181,7 +1305,8 @@ export default function PartyWall() {
               }
               saveTimeoutRef.current = setTimeout(() => {
                 if (canvasRef.current) {
-                  drawingDataRef.current = canvasRef.current.toDataURL();
+                  // Compress image data for better network performance
+                  drawingDataRef.current = canvasRef.current.toDataURL('image/jpeg', 0.8);
                 }
               }, 2000);
             }}
@@ -1232,7 +1357,8 @@ export default function PartyWall() {
               }
               saveTimeoutRef.current = setTimeout(() => {
                 if (canvasRef.current) {
-                  drawingDataRef.current = canvasRef.current.toDataURL();
+                  // Compress image data for better network performance
+                  drawingDataRef.current = canvasRef.current.toDataURL('image/jpeg', 0.8);
                 }
               }, 2000);
             }}
@@ -1320,7 +1446,7 @@ export default function PartyWall() {
                     if (saveTimeoutRef.current) {
                       clearTimeout(saveTimeoutRef.current);
                     }
-                    drawingDataRef.current = canvasRef.current.toDataURL();
+                    drawingDataRef.current = canvasRef.current.toDataURL('image/jpeg', 0.8);
                     submitDrawing(drawingDataRef.current);
                     
                     // Clear the drawing canvas after saving
@@ -1422,6 +1548,140 @@ export default function PartyWall() {
         )}
       </div>
 
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div 
+          className="fixed z-50 bg-white/90 backdrop-blur rounded-xl shadow-xl border border-black/10 py-2 min-w-[200px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-200">
+            {contextMenu.noteId ? 'Message Actions' : 'Canvas Actions'}
+          </div>
+          {contextMenu.noteId && (
+            <>
+              <button 
+                onClick={() => {
+                  // Add to selection and bounce
+                  const newSelected = new Set(selectedNotes);
+                  newSelected.add(contextMenu.noteId!);
+                  setSelectedNotes(newSelected);
+                  
+                  // Start bounce physics
+                  setNotePhysics(prev => ({
+                    ...prev,
+                    [contextMenu.noteId!]: {
+                      vx: (Math.random() - 0.5) * 10,
+                      vy: (Math.random() - 0.5) * 10,
+                      bouncing: true
+                    }
+                  }));
+                  
+                  // Stop bouncing after 3 seconds
+                  setTimeout(() => {
+                    setNotePhysics(prev => {
+                      const newPhysics = { ...prev };
+                      delete newPhysics[contextMenu.noteId!];
+                      return newPhysics;
+                    });
+                  }, 3000);
+                  
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+              >
+                🎀 Make it BOUNCE!
+              </button>
+              <button 
+                onClick={() => {
+                  alert(`Message from the void: "${notes.find(n => n.id === contextMenu.noteId)?.text}"`);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+              >
+                🔮 Decode Meaning
+              </button>
+              <button 
+                onClick={() => {
+                  const note = notes.find(n => n.id === contextMenu.noteId);
+                  if (note) {
+                    navigator.clipboard?.writeText(`${note.text} - From the FeriaSencilla Wall`);
+                    alert('Message copied to clipboard!');
+                  }
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+              >
+                📝 Copy to Reality
+              </button>
+              <button 
+                onClick={() => {
+                  // Simulate message getting sucked into a black hole
+                  const noteElement = document.querySelector(`[data-note-id="${contextMenu.noteId}"]`);
+                  if (noteElement) {
+                    (noteElement as HTMLElement).style.transform = 'translate(-50%, -50%) scale(0) rotate(720deg)';
+                    (noteElement as HTMLElement).style.transition = 'all 1s ease-in';
+                  }
+                  setTimeout(() => {
+                    alert('Message consumed by the digital void... it will return eventually.');
+                  }, 1000);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+              >
+                🕳️ Send to Black Hole
+              </button>
+            </>
+          )}
+          <button 
+            onClick={() => {
+              // Select all visible notes
+              const allNoteIds = new Set(notes.map(n => n.id));
+              setSelectedNotes(allNoteIds);
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+          >
+            ✨ Select All Thoughts
+          </button>
+          <button 
+            onClick={() => {
+              // Start physics for all selected notes
+              selectedNotes.forEach(noteId => {
+                setNotePhysics(prev => ({
+                  ...prev,
+                  [noteId]: {
+                    vx: (Math.random() - 0.5) * 15,
+                    vy: (Math.random() - 0.5) * 15,
+                    bouncing: true
+                  }
+                }));
+              });
+              
+              // Stop all bouncing after 4 seconds
+              setTimeout(() => {
+                setNotePhysics({});
+                setSelectedNotes(new Set());
+              }, 4000);
+              
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+            disabled={selectedNotes.size === 0}
+          >
+            💥 CHAOS PHYSICS MODE!
+          </button>
+          <button 
+            onClick={() => {
+              setSelectedNotes(new Set());
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+          >
+            🔄 Clear Selection
+          </button>
+        </div>
+      )}
 
       {/* Pop‑up ads */}
       <AdModal open={adOpen} onClose={() => setAdOpen(false)} />
