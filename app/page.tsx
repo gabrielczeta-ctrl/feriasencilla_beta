@@ -185,6 +185,8 @@ interface Note {
   yPct: number;
   createdAt: number;
   expireAt: number;
+  imageData?: string; // For drawings
+  isDragging?: boolean;
 }
 
 function useWSNotes(wsUrl: string, ttlMs = HOUR_MS) {
@@ -224,6 +226,13 @@ function useWSNotes(wsUrl: string, ttlMs = HOUR_MS) {
           } else if (msg.type === "video" && msg.url) {
             console.log("📺 Received video sync:", msg.url);
             setCurrentVideo(msg.url);
+          } else if (msg.type === "move" && msg.noteId) {
+            // Update note position
+            setNotes(prev => prev.map(note => 
+              note.id === msg.noteId 
+                ? { ...note, xPct: msg.xPct, yPct: msg.yPct }
+                : note
+            ));
           }
         } catch {}
       };
@@ -264,7 +273,7 @@ function useWSNotes(wsUrl: string, ttlMs = HOUR_MS) {
     ws.send(JSON.stringify({ type: "video", url }));
   }
 
-  return { notes: fresh, currentVideo, status, postNote, updateVideo };
+  return { notes: fresh, currentVideo, status, postNote, updateVideo, wsRef };
 }
 
 // --- Input bubble ---
@@ -863,6 +872,8 @@ export default function PartyWall() {
   const drawingDataRef = useRef<string>('');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [persistentDrawings, setPersistentDrawings] = useState<{id: string; imageData: string; createdAt: number}[]>([]);
+  const [draggedNote, setDraggedNote] = useState<string | null>(null);
 
   // Initialize canvas when entering draw mode
   useEffect(() => {
@@ -910,7 +921,7 @@ export default function PartyWall() {
     schedule(); return () => { active = false; };
   }, []);
 
-  const { notes, currentVideo, status, postNote, updateVideo } = useWSNotes(wsUrl, HOUR_MS);
+  const { notes, currentVideo, status, postNote, updateVideo, wsRef } = useWSNotes(wsUrl, HOUR_MS);
 
   const onBackgroundClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement; 
@@ -965,6 +976,15 @@ export default function PartyWall() {
 
   async function submitDrawing(imageData: string) {
     if (!user) return;
+    
+    // Add drawing to persistent drawings locally
+    const drawingId = `drawing_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const newDrawing = {
+      id: drawingId,
+      imageData,
+      createdAt: Date.now()
+    };
+    setPersistentDrawings(prev => [...prev, newDrawing]);
     
     // Gain XP for drawing
     const newXP = user.xp + 2; // More XP for drawings
@@ -1024,15 +1044,65 @@ export default function PartyWall() {
     <div ref={containerRef} className="relative w-full min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-black text-white" onClick={onBackgroundClick}>
       <ParticleField drawingCanvas={canvasRef.current} />
 
+      {/* Persistent Drawing Layer */}
+      <div className="absolute inset-0 pointer-events-none">
+        {persistentDrawings.map((drawing) => (
+          <div key={drawing.id} className="absolute inset-0">
+            <img 
+              src={drawing.imageData} 
+              alt="Drawing" 
+              className="absolute inset-0 w-full h-full object-cover opacity-80"
+              style={{ mixBlendMode: 'multiply' }}
+            />
+          </div>
+        ))}
+      </div>
+
       {/* Floating notes */}
       <div className="absolute inset-0">
         <AnimatePresence>
           {notes.map((n) => {
             const age = nowMs - n.createdAt; const life = clamp01(1 - age / HOUR_MS); const scale = 0.9 + 0.2 * life; const opacity = 0.2 + 0.8 * life;
+            const isDragging = draggedNote === n.id;
             return (
-              <motion.div key={n.id} initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity, scale }} exit={{ opacity: 0, scale: 0.8 }} transition={{ type: "spring", stiffness: 200, damping: 20 }} className="pointer-events-none select-none absolute font-semibold drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]" style={{ left: `${n.xPct}%`, top: `${n.yPct}%`, transform: "translate(-50%, -50%)" }}>
+              <motion.div 
+                key={n.id} 
+                initial={{ opacity: 0, scale: 0.8 }} 
+                animate={{ opacity, scale }} 
+                exit={{ opacity: 0, scale: 0.8 }} 
+                transition={{ type: "spring", stiffness: 200, damping: 20 }} 
+                className={`absolute font-semibold drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)] ${
+                  isDragging ? 'pointer-events-auto cursor-grabbing z-50' : canvasMode === 'draw' ? 'pointer-events-none select-none' : 'pointer-events-auto cursor-grab'
+                }`}
+                style={{ 
+                  left: `${n.xPct}%`, 
+                  top: `${n.yPct}%`, 
+                  transform: "translate(-50%, -50%)",
+                  zIndex: isDragging ? 50 : 10
+                }}
+                drag={canvasMode !== 'draw'}
+                dragMomentum={false}
+                onDragStart={() => setDraggedNote(n.id)}
+                onDragEnd={(event, info) => {
+                  setDraggedNote(null);
+                  if (!containerRef.current) return;
+                  
+                  const rect = containerRef.current.getBoundingClientRect();
+                  const newXPct = clamp01(info.point.x / rect.width) * 100;
+                  const newYPct = clamp01(info.point.y / rect.height) * 100;
+                  
+                  // Update note position locally (for immediate feedback)
+                  // You might want to send this to the server later
+                  // For now, the position update is just visual
+                }}
+              >
                 <div className="px-3 py-2 rounded-2xl max-w-xs" style={{ background: "rgba(255,255,255,0.14)", backdropFilter: "blur(8px)" }}>
                   <div className="text-sm leading-tight">{n.text}</div>
+                  {n.imageData && (
+                    <div className="mt-2">
+                      <img src={n.imageData} alt="Drawing" className="max-w-full h-auto rounded-lg" />
+                    </div>
+                  )}
                 </div>
               </motion.div>
             );
@@ -1248,6 +1318,12 @@ export default function PartyWall() {
                     }
                     drawingDataRef.current = canvasRef.current.toDataURL();
                     submitDrawing(drawingDataRef.current);
+                    
+                    // Clear the drawing canvas after saving
+                    const ctx = canvasRef.current.getContext('2d');
+                    if (ctx) {
+                      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                    }
                   }
                   setCanvasMode(null);
                   setHasUnsavedChanges(false);
