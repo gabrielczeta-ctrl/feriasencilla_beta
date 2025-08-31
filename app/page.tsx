@@ -596,6 +596,58 @@ const STAT_DATABASE = {
   ]
 };
 
+// Unlockable page interaction behaviors
+const UNLOCKABLE_BEHAVIORS = {
+  "rainbow-trails": {
+    id: "rainbow-trails",
+    name: "🌈 Rainbow Message Trails",
+    description: "Your messages leave colorful particle trails as they move",
+    cost: 10,
+    category: "Visual Effects",
+    requiredStat: "Navigate Neon Grid Purgatory"
+  },
+  "message-multiplier": {
+    id: "message-multiplier",
+    name: "📡 Message Echo Chamber", 
+    description: "Your messages spawn ghostly duplicates that fade away",
+    cost: 15,
+    category: "Interaction",
+    requiredStat: "Channel Static Ghost Frequencies"
+  },
+  "time-dilation": {
+    id: "time-dilation",
+    name: "⏰ Temporal Anomaly Field",
+    description: "Messages near yours move in slow motion briefly",
+    cost: 20,
+    category: "Reality Warping",
+    requiredStat: "Dilate Time via Outrun Physics"
+  },
+  "pixel-corruption": {
+    id: "pixel-corruption",
+    name: "💾 Digital Glitch Aura",
+    description: "Causes random visual glitches around your messages",
+    cost: 12,
+    category: "Chaos Effects",
+    requiredStat: "Commune with Error Messages"
+  },
+  "gravity-well": {
+    id: "gravity-well",
+    name: "🌌 Gravitational Singularity",
+    description: "Other messages are attracted to yours like planets to a star",
+    cost: 25,
+    category: "Physics",
+    requiredStat: "Achieve Loading Bar Enlightenment"
+  },
+  "dream-logic": {
+    id: "dream-logic",
+    name: "🌙 Oneiric Text Morphing",
+    description: "Your messages occasionally shift and change like dream memories",
+    cost: 18,
+    category: "Surreal",
+    requiredStat: "Navigate Paralysis Dimensions"
+  }
+};
+
 // Randomly pick stats from the database
 interface CharacterStats {
   [key: string]: number; // Dynamic stats
@@ -605,21 +657,15 @@ function generateRandomStats(): CharacterStats {
   const stats: CharacterStats = {};
   const categories = Object.keys(STAT_DATABASE);
   
-  // Pick 3-5 random categories
-  const numCategories = 3 + Math.floor(Math.random() * 3);
+  // Pick exactly 2 categories for the new structure
   const selectedCategories = categories
     .sort(() => 0.5 - Math.random())
-    .slice(0, numCategories);
+    .slice(0, 2);
   
   selectedCategories.forEach(category => {
     const categoryStats = STAT_DATABASE[category as keyof typeof STAT_DATABASE];
-    // Pick 2-4 stats from each category
-    const numStats = 2 + Math.floor(Math.random() * 3);
-    const selectedStats = categoryStats
-      .sort(() => 0.5 - Math.random())
-      .slice(0, numStats);
-    
-    selectedStats.forEach(stat => {
+    // Include ALL stats from each selected category
+    categoryStats.forEach(stat => {
       const statKey = `${stat.icon} ${stat.name}`;
       stats[statKey] = Math.floor(Math.random() * 100) + 1;
     });
@@ -628,32 +674,42 @@ function generateRandomStats(): CharacterStats {
   return stats;
 }
 
-// Get stat categories for display
+// Get stat categories for display - now properly organized into 2 main categories
 function getStatCategoriesForDisplay(user: User) {
-  const categories: { title: string; stats: { name: string; value: number; icon: string }[] }[] = [];
   const statEntries = Object.entries(user.stats);
   
-  // Group stats by emoji (rough category detection)
-  const grouped: { [key: string]: { name: string; value: number; icon: string }[] } = {};
+  // Group stats by finding which categories they belong to in STAT_DATABASE
+  const categoryGroups: { [categoryName: string]: { name: string; value: number; icon: string }[] } = {};
   
   statEntries.forEach(([key, value]) => {
     const icon = key.split(' ')[0];
     const name = key.substring(key.indexOf(' ') + 1);
     
-    if (!grouped[icon]) {
-      grouped[icon] = [];
+    // Find which category this stat belongs to
+    let foundCategory = null;
+    for (const [categoryName, categoryStats] of Object.entries(STAT_DATABASE)) {
+      const matchingStat = categoryStats.find(stat => 
+        stat.icon === icon && stat.name === name
+      );
+      if (matchingStat) {
+        foundCategory = categoryName;
+        break;
+      }
     }
-    grouped[icon].push({ name, value, icon });
+    
+    if (foundCategory) {
+      if (!categoryGroups[foundCategory]) {
+        categoryGroups[foundCategory] = [];
+      }
+      categoryGroups[foundCategory].push({ name, value, icon });
+    }
   });
   
-  // Convert to category format
-  Object.entries(grouped).forEach(([icon, stats], index) => {
-    const categoryKeys = Object.keys(STAT_DATABASE);
-    categories.push({
-      title: categoryKeys[index % categoryKeys.length] || `${icon} FeriaSencilla Powers`,
-      stats
-    });
-  });
+  // Convert to the expected format
+  const categories = Object.entries(categoryGroups).map(([categoryName, stats]) => ({
+    title: categoryName,
+    stats: stats.sort((a, b) => b.value - a.value) // Sort by value descending
+  }));
   
   return categories;
 }
@@ -667,6 +723,8 @@ interface User {
   messagesSent: number;
   joinedAt: number;
   stats: CharacterStats;
+  spendableXP: number; // XP available for spending on traits
+  unlockedBehaviors: string[]; // List of unlocked behavior IDs
 }
 
 
@@ -724,6 +782,181 @@ function getLevelTitle(level: number): string {
   if (level >= 10) return "🔥 Regular";
   if (level >= 5) return "✨ Active";
   return "🆕 Newbie";
+}
+
+// Function to get available behaviors for unlock
+function getAvailableBehaviors(user: User): Array<typeof UNLOCKABLE_BEHAVIORS[keyof typeof UNLOCKABLE_BEHAVIORS] & {canAfford: boolean, hasRequiredStat: boolean}> {
+  return Object.values(UNLOCKABLE_BEHAVIORS).map(behavior => {
+    const canAfford = user.spendableXP >= behavior.cost;
+    const hasRequiredStat = Object.keys(user.stats).some(statKey => 
+      statKey.includes(behavior.requiredStat)
+    );
+    const alreadyUnlocked = user.unlockedBehaviors.includes(behavior.id);
+    
+    return {
+      ...behavior,
+      canAfford,
+      hasRequiredStat,
+      alreadyUnlocked
+    };
+  }).filter(behavior => !behavior.alreadyUnlocked); // Only show behaviors that haven't been unlocked yet
+}
+
+// Function to spend XP and unlock a behavior
+function unlockBehavior(user: User, behaviorId: string): User | null {
+  const behavior = UNLOCKABLE_BEHAVIORS[behaviorId as keyof typeof UNLOCKABLE_BEHAVIORS];
+  if (!behavior) return null;
+  
+  const hasRequiredStat = Object.keys(user.stats).some(statKey => 
+    statKey.includes(behavior.requiredStat)
+  );
+  
+  if (user.spendableXP >= behavior.cost && hasRequiredStat && !user.unlockedBehaviors.includes(behaviorId)) {
+    return {
+      ...user,
+      spendableXP: user.spendableXP - behavior.cost,
+      unlockedBehaviors: [...user.unlockedBehaviors, behaviorId]
+    };
+  }
+  
+  return null;
+}
+
+// Function to check if user has a specific behavior unlocked
+function hasBehavior(user: User, behaviorId: string): boolean {
+  return user.unlockedBehaviors.includes(behaviorId);
+}
+
+// Function to apply behavior effects to a note element
+function applyBehaviorEffects(user: User, noteElement: HTMLElement, noteId: string) {
+  // Rainbow Trails Effect
+  if (hasBehavior(user, 'rainbow-trails')) {
+    noteElement.style.filter = 'hue-rotate(0deg) saturate(150%)';
+    noteElement.style.animation = 'rainbow-rotate 3s linear infinite';
+    
+    // Add CSS animation if it doesn't exist
+    if (!document.getElementById('rainbow-style')) {
+      const style = document.createElement('style');
+      style.id = 'rainbow-style';
+      style.textContent = `
+        @keyframes rainbow-rotate {
+          0% { filter: hue-rotate(0deg) saturate(150%); }
+          25% { filter: hue-rotate(90deg) saturate(150%); }
+          50% { filter: hue-rotate(180deg) saturate(150%); }
+          75% { filter: hue-rotate(270deg) saturate(150%); }
+          100% { filter: hue-rotate(360deg) saturate(150%); }
+        }
+        @keyframes dream-morph {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.05) skew(1deg); }
+        }
+        @keyframes glitch-effect {
+          0%, 100% { transform: translate(0); }
+          20% { transform: translate(-2px, 2px); }
+          40% { transform: translate(-2px, -2px); }
+          60% { transform: translate(2px, 2px); }
+          80% { transform: translate(2px, -2px); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+  
+  // Dream Logic Effect
+  if (hasBehavior(user, 'dream-logic')) {
+    noteElement.style.animation = 'dream-morph 6s ease-in-out infinite';
+  }
+  
+  // Pixel Corruption Effect
+  if (hasBehavior(user, 'pixel-corruption')) {
+    if (Math.random() < 0.3) { // 30% chance of glitch
+      noteElement.style.animation = 'glitch-effect 0.5s ease-in-out';
+      setTimeout(() => {
+        noteElement.style.animation = '';
+      }, 500);
+    }
+  }
+
+  // Message Echo Chamber (creates ghostly duplicates)
+  if (hasBehavior(user, 'message-multiplier')) {
+    // Create ghostly duplicate that fades away
+    const clone = noteElement.cloneNode(true) as HTMLElement;
+    clone.style.position = 'absolute';
+    clone.style.opacity = '0.3';
+    clone.style.transform = 'translate(-50%, -50%) scale(0.8)';
+    clone.style.animation = 'fade-out-scale 3s ease-out forwards';
+    clone.style.pointerEvents = 'none';
+    clone.style.zIndex = '5';
+    
+    // Add fade out animation if not exists
+    if (!document.getElementById('echo-style')) {
+      const style = document.createElement('style');
+      style.id = 'echo-style';
+      style.textContent = `
+        @keyframes fade-out-scale {
+          0% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1.2); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    // Position randomly near the original
+    const offsetX = (Math.random() - 0.5) * 100;
+    const offsetY = (Math.random() - 0.5) * 100;
+    clone.style.left = `calc(${noteElement.style.left} + ${offsetX}px)`;
+    clone.style.top = `calc(${noteElement.style.top} + ${offsetY}px)`;
+    
+    noteElement.parentElement?.appendChild(clone);
+    
+    // Remove the clone after animation
+    setTimeout(() => {
+      clone.remove();
+    }, 3000);
+  }
+}
+
+// Function to implement gravity-well effect (attract other notes)
+function applyGravityWellEffect(userNotes: string[], allNotes: Note[], containerElement: HTMLElement) {
+  if (!containerElement) return;
+  
+  userNotes.forEach(userNoteId => {
+    const userNoteElement = containerElement.querySelector(`[data-note-id="${userNoteId}"]`) as HTMLElement;
+    if (!userNoteElement) return;
+    
+    const userRect = userNoteElement.getBoundingClientRect();
+    const containerRect = containerElement.getBoundingClientRect();
+    
+    allNotes.forEach(note => {
+      if (note.id === userNoteId) return; // Don't attract self
+      
+      const noteElement = containerElement.querySelector(`[data-note-id="${note.id}"]`) as HTMLElement;
+      if (!noteElement) return;
+      
+      const noteRect = noteElement.getBoundingClientRect();
+      const distance = Math.sqrt(
+        Math.pow(noteRect.left - userRect.left, 2) + 
+        Math.pow(noteRect.top - userRect.top, 2)
+      );
+      
+      // Only affect notes within 200px radius
+      if (distance < 200 && distance > 10) {
+        const force = Math.max(0.1, 50 / distance);
+        const angle = Math.atan2(
+          userRect.top - noteRect.top,
+          userRect.left - noteRect.left
+        );
+        
+        // Apply subtle gravitational pull
+        const currentTransform = noteElement.style.transform || '';
+        const moveX = Math.cos(angle) * force * 0.1;
+        const moveY = Math.sin(angle) * force * 0.1;
+        
+        noteElement.style.transition = 'transform 0.5s ease-out';
+        noteElement.style.transform = `${currentTransform} translate(${moveX}px, ${moveY}px)`;
+      }
+    });
+  });
 }
 
 const defaultEmojis = ["😎", "🦄", "🚀", "🔥", "⚡", "🌈", "👑", "💫", "🎯", "🎮", "🍕", "🎨"];
@@ -793,7 +1026,9 @@ function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
               level: 1,
               messagesSent: 0,
               joinedAt: Date.now(),
-              stats: generateRandomStats()
+              stats: generateRandomStats(),
+              spendableXP: 0,
+              unlockedBehaviors: []
             })}
             disabled={!name.trim()}
             className="w-full py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] transition-transform"
@@ -811,12 +1046,23 @@ interface CharacterStatsModalProps {
   user: User;
   isOpen: boolean;
   onClose: () => void;
+  onUserUpdate: (user: User) => void;
 }
 
-function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps) {
+function CharacterStatsModal({ user, isOpen, onClose, onUserUpdate }: CharacterStatsModalProps) {
   if (!isOpen) return null;
 
   const statCategories = getStatCategoriesForDisplay(user);
+  const availableBehaviors = getAvailableBehaviors(user);
+
+  const handleUnlockBehavior = (behaviorId: string) => {
+    const updatedUser = unlockBehavior(user, behaviorId);
+    if (updatedUser) {
+      onUserUpdate(updatedUser);
+    } else {
+      alert('Cannot unlock this behavior! Check requirements.');
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4">
@@ -837,6 +1083,70 @@ function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps
             ✕
           </button>
         </div>
+
+        {/* Spendable XP Display */}
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl border border-yellow-300/30">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold text-yellow-300">💰 Spendable XP</h3>
+              <p className="text-yellow-200/80 text-sm">Unlock new abilities and behaviors!</p>
+            </div>
+            <div className="text-3xl font-bold text-yellow-300">{user.spendableXP}</div>
+          </div>
+        </div>
+
+        {/* Unlockable Behaviors */}
+        {availableBehaviors.length > 0 && (
+          <div className="mb-4 sm:mb-6">
+            <h3 className="text-xl font-bold text-white mb-3">🎯 Available Unlocks</h3>
+            <div className="grid grid-cols-1 gap-3">
+              {availableBehaviors.map((behavior) => (
+                <div key={behavior.id} className="bg-white/10 rounded-xl p-3 backdrop-blur border border-purple-300/30">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h4 className="font-bold text-white text-sm mb-1">{behavior.name}</h4>
+                      <p className="text-purple-200 text-xs mb-2">{behavior.description}</p>
+                      <div className="flex items-center gap-4 text-xs">
+                        <span className="text-yellow-300">💰 {behavior.cost} XP</span>
+                        <span className="text-cyan-300">📊 Requires: {behavior.requiredStat}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleUnlockBehavior(behavior.id)}
+                      disabled={!behavior.canAfford || !behavior.hasRequiredStat}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        behavior.canAfford && behavior.hasRequiredStat
+                          ? 'bg-gradient-to-r from-green-500 to-blue-500 text-white hover:scale-105'
+                          : 'bg-gray-600 text-gray-300 cursor-not-allowed'
+                      }`}
+                    >
+                      {!behavior.hasRequiredStat ? '🚫 Need Stat' : 
+                       !behavior.canAfford ? '💸 Too Expensive' : '✨ Unlock'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Unlocked Behaviors Display */}
+        {user.unlockedBehaviors.length > 0 && (
+          <div className="mb-4 sm:mb-6">
+            <h3 className="text-xl font-bold text-white mb-3">🌟 Your Active Powers</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {user.unlockedBehaviors.map((behaviorId) => {
+                const behavior = UNLOCKABLE_BEHAVIORS[behaviorId as keyof typeof UNLOCKABLE_BEHAVIORS];
+                return behavior ? (
+                  <div key={behaviorId} className="bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-lg p-2 border border-green-300/30">
+                    <div className="font-semibold text-green-300 text-sm">{behavior.name}</div>
+                    <div className="text-green-200/80 text-xs">{behavior.description}</div>
+                  </div>
+                ) : null;
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Stats Categories */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
@@ -896,6 +1206,13 @@ export default function PartyWall() {
         if (!parsedUser.stats) {
           parsedUser.stats = generateRandomStats();
         }
+        // Migrate users without new XP system fields
+        if (typeof parsedUser.spendableXP === 'undefined') {
+          parsedUser.spendableXP = Math.floor(parsedUser.xp * 0.1); // Give 10% of current XP as spendable
+        }
+        if (!parsedUser.unlockedBehaviors) {
+          parsedUser.unlockedBehaviors = [];
+        }
         return parsedUser;
       }
     }
@@ -915,9 +1232,10 @@ export default function PartyWall() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [persistentDrawings, setPersistentDrawings] = useState<{id: string; imageData: string; createdAt: number}[]>([]);
+  const [selectedDrawings, setSelectedDrawings] = useState<Set<string>>(new Set());
   const [draggedNote, setDraggedNote] = useState<string | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<Set<string>>(new Set());
-  const [contextMenu, setContextMenu] = useState<{x: number; y: number; noteId?: string} | null>(null);
+  const [contextMenu, setContextMenu] = useState<{x: number; y: number; noteId?: string; drawingId?: string} | null>(null);
   const [notePhysics, setNotePhysics] = useState<{[key: string]: {vx: number; vy: number; bouncing: boolean}}>({});
 
   // Initialize canvas when entering draw mode
@@ -960,6 +1278,26 @@ export default function PartyWall() {
     }
   }, []);
 
+  const { notes, currentVideo, status, postNote, updateVideo, wsRef } = useWSNotes(wsUrl, HOUR_MS);
+
+  // Gravity well effect for users with that behavior
+  useEffect(() => {
+    if (user && hasBehavior(user, 'gravity-well')) {
+      const interval = setInterval(() => {
+        // Find user's own notes
+        const userNoteIds = notes
+          .filter(n => n.text.includes(user.emoji) && n.text.includes(user.name.slice(0, 4)))
+          .map(n => n.id);
+        
+        if (containerRef.current && userNoteIds.length > 0) {
+          applyGravityWellEffect(userNoteIds, notes, containerRef.current);
+        }
+      }, 1000); // Apply gravity effect every second
+      
+      return () => clearInterval(interval);
+    }
+  }, [user, notes]);
+
   // Physics update loop for bouncing notes
   useEffect(() => {
     const interval = setInterval(() => {
@@ -993,8 +1331,6 @@ export default function PartyWall() {
     let active = true; function schedule() { const ms = 30000 + Math.random() * 30000; setTimeout(() => { if (!active) return; setAdOpen(true); schedule(); }, ms); }
     schedule(); return () => { active = false; };
   }, []);
-
-  const { notes, currentVideo, status, postNote, updateVideo, wsRef } = useWSNotes(wsUrl, HOUR_MS);
 
   const onBackgroundClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement; 
@@ -1037,7 +1373,8 @@ export default function PartyWall() {
       ...user, 
       xp: newXP, 
       level: newLevel, 
-      messagesSent: newMessageCount 
+      messagesSent: newMessageCount,
+      spendableXP: user.spendableXP + 1 // Gain 1 spendable XP per message
     };
     setUser(updatedUser);
     
@@ -1082,7 +1419,8 @@ export default function PartyWall() {
       ...user, 
       xp: newXP, 
       level: newLevel, 
-      messagesSent: newMessageCount 
+      messagesSent: newMessageCount,
+      spendableXP: user.spendableXP + 2 // Gain 2 spendable XP per drawing (more than messages)
     };
     setUser(updatedUser);
     
@@ -1138,17 +1476,52 @@ export default function PartyWall() {
       <ParticleField drawingCanvas={canvasRef.current} />
 
       {/* Persistent Drawing Layer */}
-      <div className="absolute inset-0 pointer-events-none">
-        {persistentDrawings.map((drawing) => (
-          <div key={drawing.id} className="absolute inset-0">
-            <img 
-              src={drawing.imageData} 
-              alt="Drawing" 
-              className="absolute inset-0 w-full h-full object-cover opacity-90"
-              style={{ mixBlendMode: 'screen' }}
-            />
-          </div>
-        ))}
+      <div className="absolute inset-0">
+        {persistentDrawings.map((drawing) => {
+          const isSelected = selectedDrawings.has(drawing.id);
+          return (
+            <div 
+              key={drawing.id} 
+              className={`absolute inset-0 ${
+                canvasMode !== 'draw' ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'
+              } ${
+                isSelected ? 'ring-4 ring-cyan-400/50 ring-inset' : ''
+              }`}
+              onClick={(e) => {
+                if (canvasMode === 'draw') return;
+                if (e.ctrlKey || e.metaKey) {
+                  e.stopPropagation();
+                  const newSelected = new Set(selectedDrawings);
+                  if (newSelected.has(drawing.id)) {
+                    newSelected.delete(drawing.id);
+                  } else {
+                    newSelected.add(drawing.id);
+                  }
+                  setSelectedDrawings(newSelected);
+                }
+              }}
+              onContextMenu={(e) => {
+                if (canvasMode === 'draw') return;
+                e.preventDefault();
+                e.stopPropagation();
+                setContextMenu({ x: e.clientX, y: e.clientY, drawingId: drawing.id });
+              }}
+            >
+              <img 
+                src={drawing.imageData} 
+                alt="Drawing" 
+                className="absolute inset-0 w-full h-full object-cover opacity-90 select-none"
+                style={{ mixBlendMode: 'screen' }}
+                draggable={false}
+              />
+              {isSelected && (
+                <div className="absolute top-2 left-2 bg-cyan-500/80 text-white px-2 py-1 rounded text-xs font-semibold">
+                  📝 Selected
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Floating notes */}
@@ -1159,13 +1532,23 @@ export default function PartyWall() {
             const isDragging = draggedNote === n.id;
             const isSelected = selectedNotes.has(n.id);
             const physics = notePhysics[n.id];
+            
+            // Check if this note was created by the current user (basic detection)
+            const isOwnNote = n.text.includes(user.emoji) && n.text.includes(user.name.slice(0, 4));
+            
             return (
               <motion.div 
                 key={n.id} 
                 initial={{ opacity: 0, scale: 0.8 }} 
                 animate={{ opacity, scale }} 
                 exit={{ opacity: 0, scale: 0.8 }} 
-                transition={{ type: "spring", stiffness: 200, damping: 20 }} 
+                transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                ref={(el) => {
+                  // Apply behavior effects to user's own notes
+                  if (el && isOwnNote) {
+                    setTimeout(() => applyBehaviorEffects(user, el, n.id), 100);
+                  }
+                }} 
                 className={`absolute font-semibold drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)] ${
                   isDragging ? 'pointer-events-auto cursor-grabbing z-50' : 
                   canvasMode === 'draw' ? 'pointer-events-none select-none' : 
@@ -1181,7 +1564,7 @@ export default function PartyWall() {
                   filter: physics?.bouncing ? 'hue-rotate(45deg) saturate(150%)' : 'none'
                 }}
                 drag={canvasMode !== 'draw'}
-                dragMomentum={false}
+                dragMomentum={true}
                 onDragStart={() => setDraggedNote(n.id)}
                 onClick={(e) => {
                   if (e.shiftKey) {
@@ -1493,7 +1876,7 @@ export default function PartyWall() {
           <span className="text-sm sm:text-lg">{user.emoji}</span>
           <div className="text-xs hidden sm:block">
             <div className="font-semibold text-purple-200">Lv.{user.level} {user.name.slice(0, 4)}</div>
-            <div className="text-purple-300">{user.xp} XP</div>
+            <div className="text-purple-300">{user.xp} XP • 💰 {user.spendableXP}</div>
           </div>
         </button>
         
@@ -1556,7 +1939,7 @@ export default function PartyWall() {
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <div className="px-3 py-2 text-xs text-gray-500 border-b border-gray-200">
-            {contextMenu.noteId ? 'Message Actions' : 'Canvas Actions'}
+            {contextMenu.noteId ? 'Message Actions' : contextMenu.drawingId ? 'Drawing Actions' : 'Canvas Actions'}
           </div>
           {contextMenu.noteId && (
             <>
@@ -1633,6 +2016,49 @@ export default function PartyWall() {
               </button>
             </>
           )}
+          {contextMenu.drawingId && (
+            <>
+              <button 
+                onClick={() => {
+                  // Add to drawing selection
+                  const newSelected = new Set(selectedDrawings);
+                  newSelected.add(contextMenu.drawingId!);
+                  setSelectedDrawings(newSelected);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+              >
+                ✨ Select Drawing
+              </button>
+              <button 
+                onClick={() => {
+                  // Delete drawing
+                  setPersistentDrawings(prev => prev.filter(d => d.id !== contextMenu.drawingId));
+                  const newSelected = new Set(selectedDrawings);
+                  newSelected.delete(contextMenu.drawingId!);
+                  setSelectedDrawings(newSelected);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-red-100 text-sm text-red-700"
+              >
+                🗑️ Delete Drawing
+              </button>
+              <button 
+                onClick={() => {
+                  // Copy drawing to clipboard as base64
+                  const drawing = persistentDrawings.find(d => d.id === contextMenu.drawingId);
+                  if (drawing) {
+                    navigator.clipboard?.writeText(drawing.imageData);
+                    alert('Drawing data copied to clipboard!');
+                  }
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+              >
+                📋 Copy Drawing Data
+              </button>
+            </>
+          )}
           <button 
             onClick={() => {
               // Select all visible notes
@@ -1673,12 +2099,24 @@ export default function PartyWall() {
           </button>
           <button 
             onClick={() => {
-              setSelectedNotes(new Set());
+              // Select all drawings
+              const allDrawingIds = new Set(persistentDrawings.map(d => d.id));
+              setSelectedDrawings(allDrawingIds);
               setContextMenu(null);
             }}
             className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
           >
-            🔄 Clear Selection
+            🎨 Select All Drawings
+          </button>
+          <button 
+            onClick={() => {
+              setSelectedNotes(new Set());
+              setSelectedDrawings(new Set());
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-left hover:bg-gray-100 text-sm text-gray-800"
+          >
+            🔄 Clear All Selections
           </button>
         </div>
       )}
@@ -1691,6 +2129,7 @@ export default function PartyWall() {
         user={user} 
         isOpen={statsModalOpen} 
         onClose={() => setStatsModalOpen(false)} 
+        onUserUpdate={setUser}
       />
     </div>
   );
