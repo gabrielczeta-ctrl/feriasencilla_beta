@@ -1,0 +1,34 @@
+# Love2D Release Configuration
+# Build settings for cross-platform distribution
+
+# Project information
+GAME_TITLE="Partywall - Multiplayer Physics Canvas"
+GAME_PACKAGE_NAME="partywall_multiplayer_canvas"
+GAME_VERSION="1.0.0"
+GAME_AUTHOR="Partywall Team"
+GAME_DESCRIPTION="Real-time multiplayer physics-based drawing canvas"
+GAME_URL="https://github.com/partywall/multiplayer-canvas"
+
+# Build targets
+BUILD_WINDOWS=true
+BUILD_MACOS=true
+BUILD_LINUX=true
+BUILD_ANDROID=false  # Requires additional setup
+BUILD_IOS=false      # Requires additional setup
+
+# Windows settings
+WIN_ICON="assets/icons/icon.ico"
+WIN_CONSOLE=false
+
+# macOS settings  
+MAC_ICON="assets/icons/icon.icns"
+MAC_IDENTIFIER="com.partywall.canvas"
+MAC_BUNDLE_NAME="Partywall"
+
+# Linux settings
+LINUX_ICON="assets/icons/icon.png"
+LINUX_DESKTOP_FILE=true
+
+# Distribution
+COMPRESS_BINARIES=true
+INCLUDE_LICENSE=true
