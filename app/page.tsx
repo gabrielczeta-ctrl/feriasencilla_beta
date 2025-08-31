@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UnifiedCanvas, CanvasObject, DrawingStroke } from './UnifiedCanvasEnhanced';
+import SuperPhysicsCanvas from './SuperPhysicsCanvas';
+import { CanvasObject, DrawingStroke } from './UnifiedCanvasEnhanced';
 import { useWSCanvas } from './useWSCanvas';
 
 // --- Utils ---
@@ -206,7 +207,8 @@ export default function PartyWallApp() {
     { id: 'pen', name: 'Pen', icon: '✏️' },
     { id: 'brush', name: 'Brush', icon: '🖌️' },
     { id: 'eraser', name: 'Eraser', icon: '🧽' },
-    { id: 'message', name: 'Message Box', icon: '💬' }
+    { id: 'message', name: 'Message Box', icon: '💬' },
+    { id: 'marker', name: 'Marker', icon: '🖍️' }
   ];
 
   const colorPresets = ['#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
@@ -251,7 +253,7 @@ export default function PartyWallApp() {
           style={{ width: canvasSize.width, height: canvasSize.height }}
           onClick={handleBackgroundClick}
         >
-          <UnifiedCanvas
+          <SuperPhysicsCanvas
             width={canvasSize.width}
             height={canvasSize.height}
             objects={canvasObjects}
