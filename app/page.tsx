@@ -796,6 +796,30 @@ export default function PartyWall() {
   const [streamUrl, setStreamUrl] = useState(() => typeof window !== 'undefined' ? localStorage.getItem("partywall_stream_url") || "" : "");
   const [wsUrl, setWsUrl] = useState(() => (typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_WS_URL || localStorage.getItem("partywall_ws_url") || "") : ""));
   const [inputAt, setInputAt] = useState<{xPct: number; yPct: number} | null>(null); // {xPct,yPct}
+  const [canvasMode, setCanvasMode] = useState<'draw' | null>(null);
+  const [drawingTool, setDrawingTool] = useState<'pen' | 'brush' | 'eraser'>('pen');
+  const [drawingColor, setDrawingColor] = useState('#000000');
+  const [brushSize, setBrushSize] = useState(2);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawingRef = useRef(false);
+  const lastPointRef = useRef<{x: number; y: number} | null>(null);
+  const drawingDataRef = useRef<string>('');
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Initialize canvas when entering draw mode
+  useEffect(() => {
+    if (canvasMode === 'draw' && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Set black background
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawingDataRef.current = canvas.toDataURL();
+      }
+    }
+  }, [canvasMode]);
   const [adOpen, setAdOpen] = useState(false);
   const [xpGain, setXpGain] = useState<{show: boolean; amount: number}>({ show: false, amount: 0 });
   const [statsModalOpen, setStatsModalOpen] = useState(false);
@@ -833,13 +857,19 @@ export default function PartyWall() {
   const { notes, currentVideo, status, postNote, updateVideo } = useWSNotes(wsUrl, HOUR_MS);
 
   const onBackgroundClick = useCallback((e: React.MouseEvent) => {
-    const target = e.target as HTMLElement; if (target.closest && target.closest(".ui")) return;
+    const target = e.target as HTMLElement; 
+    if (target.closest && target.closest(".ui")) return;
+    if (target.closest && target.closest(".canvas-area")) return;
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const xPct = clamp01((e.clientX - rect.left) / rect.width) * 100;
     const yPct = clamp01((e.clientY - rect.top) / rect.height) * 100;
+    if (canvasMode === 'draw') {
+      // Don't show input bubble in draw mode
+      return;
+    }
     setInputAt({ xPct, yPct });
-  }, []);
+  }, [canvasMode]);
 
   async function submitNote(text: string) {
     if (!inputAt || !user) return;
@@ -875,6 +905,53 @@ export default function PartyWall() {
     const payload = { text: `${user.emoji} ${user.name.slice(0, 4)} ${levelBadge}: ${text}`, ...inputAt };
     setInputAt(null);
     try { await postNote(payload); } catch (e) { console.error(e); alert("Failed to post message!"); }
+  }
+
+  async function submitDrawing(imageData: string) {
+    if (!user) return;
+    
+    // Gain XP for drawing
+    const newXP = user.xp + 2; // More XP for drawings
+    const newLevel = getLevelFromXP(newXP);
+    const newMessageCount = user.messagesSent + 1;
+    const leveledUp = newLevel > user.level;
+    
+    // Update user with new stats
+    const updatedUser = { 
+      ...user, 
+      xp: newXP, 
+      level: newLevel, 
+      messagesSent: newMessageCount 
+    };
+    setUser(updatedUser);
+    
+    // Show XP gain animation
+    setXpGain({ show: true, amount: 2 });
+    setTimeout(() => setXpGain({ show: false, amount: 0 }), 2000);
+
+    // Show level up notification
+    if (leveledUp) {
+      setTimeout(() => {
+        alert(`🎉 LEVEL UP! You are now level ${newLevel} - ${getLevelTitle(newLevel)}! 🚀`);
+      }, 500);
+    }
+    
+    // Add user info to drawing with level
+    const levelBadge = user.level >= 5 ? `[Lv.${newLevel}]` : "";
+    const payload = { 
+      text: `${user.emoji} ${user.name.slice(0, 4)} ${levelBadge} drew something!`,
+      xPct: 50, // Center the drawing notification
+      yPct: 50,
+      imageData // Include the drawing data
+    };
+    
+    try { 
+      // Send drawing to server (will need server-side support)
+      await postNote(payload); 
+    } catch (e) { 
+      console.error(e); 
+      alert("Failed to post drawing!"); 
+    }
   }
 
   // Use currentVideo from WebSocket if available, otherwise use local streamUrl  
@@ -916,6 +993,229 @@ export default function PartyWall() {
         )}
       </AnimatePresence>
 
+      {/* Drawing Canvas */}
+      {canvasMode === 'draw' && (
+        <div className="canvas-area absolute inset-0 z-40 overflow-auto">
+          <div className="relative" style={{ width: '200vw', height: '200vh', minWidth: '1920px', minHeight: '1080px' }}>
+            <canvas
+              ref={canvasRef}
+              className="absolute top-0 left-0 cursor-crosshair bg-white border border-gray-300"
+              width={1920}
+              height={1080}
+              style={{
+                width: '1920px',
+                height: '1080px',
+              }}
+            onMouseDown={(e) => {
+              if (!canvasRef.current) return;
+              isDrawingRef.current = true;
+              const rect = canvasRef.current.getBoundingClientRect();
+              const scaleX = canvasRef.current.width / rect.width;
+              const scaleY = canvasRef.current.height / rect.height;
+              const x = (e.clientX - rect.left) * scaleX;
+              const y = (e.clientY - rect.top) * scaleY;
+              lastPointRef.current = { x, y };
+            }}
+            onMouseMove={(e) => {
+              if (!isDrawingRef.current || !canvasRef.current || !lastPointRef.current) return;
+              
+              const ctx = canvasRef.current.getContext('2d');
+              if (!ctx) return;
+              
+              const rect = canvasRef.current.getBoundingClientRect();
+              const scaleX = canvasRef.current.width / rect.width;
+              const scaleY = canvasRef.current.height / rect.height;
+              const x = (e.clientX - rect.left) * scaleX;
+              const y = (e.clientY - rect.top) * scaleY;
+              
+              ctx.beginPath();
+              ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+              ctx.lineTo(x, y);
+              ctx.strokeStyle = drawingTool === 'eraser' ? '#000000' : drawingColor;
+              ctx.lineWidth = brushSize;
+              ctx.lineCap = 'round';
+              ctx.globalCompositeOperation = drawingTool === 'eraser' ? 'destination-out' : 'source-over';
+              ctx.stroke();
+              
+              lastPointRef.current = { x, y };
+            }}
+            onMouseUp={() => {
+              isDrawingRef.current = false;
+              lastPointRef.current = null;
+              // Throttled save of canvas data (only save every 2 seconds)
+              setHasUnsavedChanges(true);
+              if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+              }
+              saveTimeoutRef.current = setTimeout(() => {
+                if (canvasRef.current) {
+                  drawingDataRef.current = canvasRef.current.toDataURL();
+                }
+              }, 2000);
+            }}
+            onTouchStart={(e) => {
+              if (!canvasRef.current) return;
+              e.preventDefault();
+              const touch = e.touches[0];
+              isDrawingRef.current = true;
+              const rect = canvasRef.current.getBoundingClientRect();
+              const scaleX = canvasRef.current.width / rect.width;
+              const scaleY = canvasRef.current.height / rect.height;
+              const x = (touch.clientX - rect.left) * scaleX;
+              const y = (touch.clientY - rect.top) * scaleY;
+              lastPointRef.current = { x, y };
+            }}
+            onTouchMove={(e) => {
+              if (!isDrawingRef.current || !canvasRef.current || !lastPointRef.current) return;
+              e.preventDefault();
+              
+              const ctx = canvasRef.current.getContext('2d');
+              if (!ctx) return;
+              
+              const touch = e.touches[0];
+              const rect = canvasRef.current.getBoundingClientRect();
+              const scaleX = canvasRef.current.width / rect.width;
+              const scaleY = canvasRef.current.height / rect.height;
+              const x = (touch.clientX - rect.left) * scaleX;
+              const y = (touch.clientY - rect.top) * scaleY;
+              
+              ctx.beginPath();
+              ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
+              ctx.lineTo(x, y);
+              ctx.strokeStyle = drawingTool === 'eraser' ? '#000000' : drawingColor;
+              ctx.lineWidth = brushSize;
+              ctx.lineCap = 'round';
+              ctx.globalCompositeOperation = drawingTool === 'eraser' ? 'destination-out' : 'source-over';
+              ctx.stroke();
+              
+              lastPointRef.current = { x, y };
+            }}
+            onTouchEnd={() => {
+              isDrawingRef.current = false;
+              lastPointRef.current = null;
+              // Throttled save for touch as well
+              setHasUnsavedChanges(true);
+              if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+              }
+              saveTimeoutRef.current = setTimeout(() => {
+                if (canvasRef.current) {
+                  drawingDataRef.current = canvasRef.current.toDataURL();
+                }
+              }, 2000);
+            }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Drawing Tools Side Menu */}
+      {canvasMode === 'draw' && (
+        <div className="ui absolute left-2 top-1/2 transform -translate-y-1/2 bg-white/90 backdrop-blur rounded-2xl p-4 shadow-xl border border-black/10 z-50">
+          <div className="space-y-4">
+            {/* Tool Selection */}
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-gray-800">🎨 Tools</div>
+              <div className="flex flex-col gap-1">
+                {[{ id: 'pen', icon: '✏️', name: 'Pen' }, { id: 'brush', icon: '🖌️', name: 'Brush' }, { id: 'eraser', icon: '🧽', name: 'Eraser' }].map(tool => (
+                  <button
+                    key={tool.id}
+                    onClick={() => setDrawingTool(tool.id as any)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      drawingTool === tool.id ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    <span>{tool.icon}</span>
+                    <span>{tool.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Color Picker */}
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-gray-800">🎨 Color</div>
+              <input
+                type="color"
+                value={drawingColor}
+                onChange={(e) => setDrawingColor(e.target.value)}
+                className="w-full h-10 rounded-lg border border-gray-300"
+              />
+              <div className="grid grid-cols-4 gap-1">
+                {['#000000', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFFFFF'].map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setDrawingColor(color)}
+                    className="w-8 h-8 rounded-lg border border-gray-300 hover:scale-110 transition-transform"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+            
+            {/* Brush Size */}
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-gray-800">📏 Size: {brushSize}px</div>
+              <input
+                type="range"
+                min="1"
+                max="50"
+                value={brushSize}
+                onChange={(e) => setBrushSize(Number(e.target.value))}
+                className="w-full"
+              />
+            </div>
+            
+            {/* Actions */}
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  if (canvasRef.current) {
+                    const ctx = canvasRef.current.getContext('2d');
+                    if (ctx) {
+                      ctx.fillStyle = '#000000';
+                      ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                      setHasUnsavedChanges(true);
+                    }
+                  }
+                }}
+                className="w-full px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors text-sm"
+              >
+                🗑️ Clear
+              </button>
+              <button
+                onClick={() => {
+                  if (canvasRef.current) {
+                    // Force immediate save
+                    if (saveTimeoutRef.current) {
+                      clearTimeout(saveTimeoutRef.current);
+                    }
+                    drawingDataRef.current = canvasRef.current.toDataURL();
+                    submitDrawing(drawingDataRef.current);
+                  }
+                  setCanvasMode(null);
+                  setHasUnsavedChanges(false);
+                }}
+                className={`w-full px-3 py-2 rounded-lg transition-colors text-sm ${
+                  hasUnsavedChanges 
+                    ? 'bg-green-500 text-white hover:bg-green-600' 
+                    : 'bg-gray-300 text-gray-600'
+                }`}
+                disabled={!hasUnsavedChanges}
+              >
+                ✅ Save & Share {hasUnsavedChanges ? '(*)' : ''}
+              </button>
+              <button
+                onClick={() => setCanvasMode(null)}
+                className="w-full px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+              >
+                ❌ Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top HUD */}
       <div className="ui pointer-events-auto absolute top-0 left-0 right-0 p-2 sm:p-3 flex items-center gap-1 sm:gap-2 z-10 bg-black/20 backdrop-blur-sm">
         <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/10">
@@ -936,6 +1236,19 @@ export default function PartyWall() {
         </button>
         
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <button 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              setCanvasMode(canvasMode === 'draw' ? null : 'draw');
+            }} 
+            className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border text-xs ${
+              canvasMode === 'draw' 
+                ? 'bg-blue-500/20 border-blue-400/30 text-blue-200' 
+                : 'bg-white/10 hover:bg-white/20 border-white/10'
+            }`}
+          >
+            🎨 {canvasMode === 'draw' ? 'Exit' : 'Draw'}
+          </button>
           <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs hidden sm:inline-block">💸</button>
           <details className="[&_summary]:list-none">
             <summary className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">⚙️</summary>
