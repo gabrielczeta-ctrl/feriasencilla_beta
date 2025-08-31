@@ -25,7 +25,7 @@ export interface CanvasObject {
 
 export interface DrawingStroke {
   id: string;
-  tool: 'pen' | 'brush' | 'eraser';
+  tool: 'pen' | 'brush' | 'eraser' | 'message';
   color: string;
   size: number;
   points: Array<{ x: number; y: number }>; // Percentage coordinates
@@ -53,7 +53,7 @@ interface UnifiedCanvasProps {
   strokes: DrawingStroke[];
   selectedObjects: Set<string>;
   drawingMode: boolean;
-  drawingTool: 'pen' | 'brush' | 'eraser';
+  drawingTool: 'pen' | 'brush' | 'eraser' | 'message';
   drawingColor: string;
   brushSize: number;
   onObjectMove: (id: string, x: number, y: number) => void;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { CanvasObject, DrawingStroke } from './UnifiedCanvas';
+import { CanvasObject, DrawingStroke } from './UnifiedCanvasEnhanced';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -13,6 +13,14 @@ interface Note {
   createdAt: number;
   expireAt?: number;
   imageData?: string;
+  physics?: {
+    vx: number;
+    vy: number;
+    bouncing: boolean;
+    mass: number;
+    friction: number;
+    restitution: number;
+  };
 }
 
 export function useWSCanvas(wsUrl: string, ttlMs = HOUR_MS) {
@@ -31,7 +39,10 @@ export function useWSCanvas(wsUrl: string, ttlMs = HOUR_MS) {
       y: note.yPct,
       width: 15, // Approximate width percentage
       height: 8,  // Approximate height percentage
-      data: { text: note.text, imageData: note.imageData }
+      physics: note.physics || undefined, // Include physics properties from notes
+      data: { text: note.text, imageData: note.imageData },
+      createdAt: note.createdAt,
+      expireAt: note.expireAt
     }));
   }, [notes]);
 

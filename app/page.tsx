@@ -50,7 +50,7 @@ export default function PartyWallApp() {
   
   // Canvas state
   const [drawingMode, setDrawingMode] = useState(false);
-  const [drawingTool, setDrawingTool] = useState<'pen' | 'brush' | 'eraser'>('pen');
+  const [drawingTool, setDrawingTool] = useState<'pen' | 'brush' | 'eraser' | 'message'>('pen');
   const [drawingColor, setDrawingColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(3);
   const [selectedObjects, setSelectedObjects] = useState<Set<string>>(new Set());
@@ -205,7 +205,8 @@ export default function PartyWallApp() {
   const drawingTools = [
     { id: 'pen', name: 'Pen', icon: '✏️' },
     { id: 'brush', name: 'Brush', icon: '🖌️' },
-    { id: 'eraser', name: 'Eraser', icon: '🧽' }
+    { id: 'eraser', name: 'Eraser', icon: '🧽' },
+    { id: 'message', name: 'Message Box', icon: '💬' }
   ];
 
   const colorPresets = ['#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'];
