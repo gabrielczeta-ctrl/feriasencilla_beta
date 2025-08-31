@@ -1065,14 +1065,14 @@ function CharacterStatsModal({ user, isOpen, onClose, onUserUpdate }: CharacterS
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4">
-      <div className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-xl sm:rounded-3xl p-4 sm:p-6 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-300/30">
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+      <div className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-3xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-purple-300/30">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-purple-300/30">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <span className="text-2xl sm:text-4xl">{user.emoji}</span>
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-purple-300/30">
+          <div className="flex items-center gap-4">
+            <span className="text-4xl">{user.emoji}</span>
             <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white">{user.name.slice(0, 4)}</h2>
+              <h2 className="text-2xl font-bold text-white">{user.name.slice(0, 4)}</h2>
               <div className="text-purple-300">{getLevelTitle(user.level)} • Level {user.level}</div>
             </div>
           </div>
@@ -1085,7 +1085,7 @@ function CharacterStatsModal({ user, isOpen, onClose, onUserUpdate }: CharacterS
         </div>
 
         {/* Spendable XP Display */}
-        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl border border-yellow-300/30">
+        <div className="mb-6 p-4 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 rounded-xl border border-yellow-300/30">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold text-yellow-300">💰 Spendable XP</h3>
@@ -1097,7 +1097,7 @@ function CharacterStatsModal({ user, isOpen, onClose, onUserUpdate }: CharacterS
 
         {/* Unlockable Behaviors */}
         {availableBehaviors.length > 0 && (
-          <div className="mb-4 sm:mb-6">
+          <div className="mb-6">
             <h3 className="text-xl font-bold text-white mb-3">🎯 Available Unlocks</h3>
             <div className="grid grid-cols-1 gap-3">
               {availableBehaviors.map((behavior) => (
@@ -1132,9 +1132,9 @@ function CharacterStatsModal({ user, isOpen, onClose, onUserUpdate }: CharacterS
 
         {/* Unlocked Behaviors Display */}
         {user.unlockedBehaviors.length > 0 && (
-          <div className="mb-4 sm:mb-6">
+          <div className="mb-6">
             <h3 className="text-xl font-bold text-white mb-3">🌟 Your Active Powers</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {user.unlockedBehaviors.map((behaviorId) => {
                 const behavior = UNLOCKABLE_BEHAVIORS[behaviorId as keyof typeof UNLOCKABLE_BEHAVIORS];
                 return behavior ? (
@@ -1149,10 +1149,10 @@ function CharacterStatsModal({ user, isOpen, onClose, onUserUpdate }: CharacterS
         )}
 
         {/* Stats Categories */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {statCategories.map((category, categoryIndex) => (
-            <div key={categoryIndex} className="bg-white/10 rounded-xl sm:rounded-2xl p-3 sm:p-4 backdrop-blur">
-              <h3 className="text-base sm:text-lg font-bold text-white mb-3 sm:mb-4">{category.title}</h3>
+            <div key={categoryIndex} className="bg-white/10 rounded-2xl p-4 backdrop-blur">
+              <h3 className="text-lg font-bold text-white mb-4">{category.title}</h3>
               <div className="space-y-3">
                 {category.stats.map((stat, statIndex) => (
                   <div key={statIndex} className="flex items-center justify-between">
@@ -1862,8 +1862,8 @@ export default function PartyWall() {
       )}
 
       {/* Top HUD */}
-      <div className="ui pointer-events-auto absolute top-0 left-0 right-0 p-2 sm:p-3 flex items-center gap-1 sm:gap-2 z-10 bg-black/20 backdrop-blur-sm">
-        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/10">
+      <div className="ui pointer-events-auto absolute top-0 left-0 right-0 p-3 flex items-center gap-2 z-10 bg-black/20 backdrop-blur-sm">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur border border-white/10">
           <div className={`size-2 rounded-full ${status === 'connected' ? 'bg-green-400' : status === 'connecting' ? 'bg-yellow-300' : 'bg-red-500'} animate-pulse`} />
           <div className="text-xs">Live Wall · last hour</div>
         </div>
@@ -1871,22 +1871,22 @@ export default function PartyWall() {
         {/* Clickable User Level Badge */}
         <button 
           onClick={() => setStatsModalOpen(true)}
-          className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30 hover:from-purple-500/30 hover:to-blue-500/30 transition-all cursor-pointer"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-blue-500/20 backdrop-blur border border-purple-300/30 hover:from-purple-500/30 hover:to-blue-500/30 transition-all cursor-pointer"
         >
-          <span className="text-sm sm:text-lg">{user.emoji}</span>
-          <div className="text-xs hidden sm:block">
+          <span className="text-lg">{user.emoji}</span>
+          <div className="text-xs">
             <div className="font-semibold text-purple-200">Lv.{user.level} {user.name.slice(0, 4)}</div>
             <div className="text-purple-300">{user.xp} XP • 💰 {user.spendableXP}</div>
           </div>
         </button>
         
-        <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        <div className="ml-auto flex items-center gap-2">
           <button 
             onClick={(e) => { 
               e.stopPropagation(); 
               setCanvasMode(canvasMode === 'draw' ? null : 'draw');
             }} 
-            className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border text-xs ${
+            className={`px-3 py-1.5 rounded-full border text-xs ${
               canvasMode === 'draw' 
                 ? 'bg-blue-500/20 border-blue-400/30 text-blue-200' 
                 : 'bg-white/10 hover:bg-white/20 border-white/10'
@@ -1894,9 +1894,9 @@ export default function PartyWall() {
           >
             🎨 {canvasMode === 'draw' ? 'Exit' : 'Draw'}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs hidden sm:inline-block">💸</button>
+          <button onClick={(e) => { e.stopPropagation(); setAdOpen(true); }} className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs">💸</button>
           <details className="[&_summary]:list-none">
-            <summary className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">⚙️</summary>
+            <summary className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs cursor-pointer">⚙️</summary>
             <div className="absolute right-3 mt-2 w-[min(92vw,36rem)]">
               <SetupPanel streamUrl={streamUrl} setStreamUrl={setStreamUrl} onUpdateVideo={updateVideo} user={user} onLogout={handleLogout} />
             </div>
@@ -1921,12 +1921,12 @@ export default function PartyWall() {
       </AnimatePresence>
 
       {/* Livestream dock */}
-      <div className="ui pointer-events-auto absolute bottom-2 sm:bottom-3 right-2 sm:right-3 w-[min(95vw,280px)] sm:w-[min(92vw,560px)] h-[180px] sm:h-[315px] rounded-xl sm:rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/40 backdrop-blur">
+      <div className="ui pointer-events-auto absolute bottom-3 right-3 w-[min(92vw,560px)] h-[315px] rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-black/40 backdrop-blur">
         {embedUrl ? (
           <iframe title="Livestream" src={embedUrl} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen />
         ) : (
           <div className="w-full h-full grid place-items-center text-center p-6 text-white/80">
-            <div><div className="font-semibold text-sm sm:text-base">No stream</div></div>
+            <div><div className="font-semibold text-base">No stream</div></div>
           </div>
         )}
       </div>
