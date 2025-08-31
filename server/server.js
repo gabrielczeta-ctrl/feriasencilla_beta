@@ -194,6 +194,70 @@ wss.on("connection", (ws, req) => {
       
       broadcast(clearMsg);
     }
+
+    // Handle object updates (physics, properties, etc.)
+    if (msg.type === "object_update" && msg.objectId && msg.updates) {
+      const updateMsg = {
+        type: "object_update",
+        objectId: msg.objectId,
+        updates: msg.updates,
+        timestamp: Date.now()
+      };
+
+      if (redisConnected && pub) {
+        try {
+          await pub.publish(CHANNEL, JSON.stringify(updateMsg));
+        } catch (error) {
+          console.warn("Redis object update operation failed:", error.message);
+        }
+      }
+      
+      broadcast(updateMsg);
+    }
+
+    // Handle object physics throwing
+    if (msg.type === "object_throw" && msg.objectId && typeof msg.vx === "number" && typeof msg.vy === "number") {
+      // Clamp velocity to reasonable limits
+      const vx = Math.max(-10, Math.min(10, msg.vx));
+      const vy = Math.max(-10, Math.min(10, msg.vy));
+      
+      const throwMsg = {
+        type: "object_throw",
+        objectId: msg.objectId,
+        vx,
+        vy,
+        timestamp: Date.now()
+      };
+
+      if (redisConnected && pub) {
+        try {
+          await pub.publish(CHANNEL, JSON.stringify(throwMsg));
+        } catch (error) {
+          console.warn("Redis object throw operation failed:", error.message);
+        }
+      }
+      
+      broadcast(throwMsg);
+    }
+
+    // Handle object deletion
+    if (msg.type === "object_delete" && msg.objectId) {
+      const deleteMsg = {
+        type: "object_delete",
+        objectId: msg.objectId,
+        timestamp: Date.now()
+      };
+
+      if (redisConnected && pub) {
+        try {
+          await pub.publish(CHANNEL, JSON.stringify(deleteMsg));
+        } catch (error) {
+          console.warn("Redis object delete operation failed:", error.message);
+        }
+      }
+      
+      broadcast(deleteMsg);
+    }
   });
 });
 

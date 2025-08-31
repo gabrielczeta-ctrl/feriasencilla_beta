@@ -15,8 +15,12 @@ export interface CanvasObject {
     vy: number;
     bouncing: boolean;
     mass: number;
+    friction: number;
+    restitution: number; // Bounciness factor
   };
   data: any; // Object-specific data
+  createdAt?: number;
+  expireAt?: number;
 }
 
 export interface DrawingStroke {
@@ -26,6 +30,20 @@ export interface DrawingStroke {
   size: number;
   points: Array<{ x: number; y: number }>; // Percentage coordinates
   timestamp: number;
+  expireAt?: number;
+  bounds?: { // Collision bounds for the stroke
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  };
+}
+
+export interface ContextMenu {
+  x: number;
+  y: number;
+  objectId: string;
+  objectType: 'message' | 'drawing' | 'stroke';
 }
 
 interface UnifiedCanvasProps {
@@ -40,8 +58,11 @@ interface UnifiedCanvasProps {
   brushSize: number;
   onObjectMove: (id: string, x: number, y: number) => void;
   onObjectSelect: (id: string, ctrlKey: boolean) => void;
+  onObjectUpdate: (id: string, updates: Partial<CanvasObject>) => void;
+  onObjectDelete: (id: string) => void;
   onDrawingStroke: (stroke: Omit<DrawingStroke, 'id' | 'timestamp'>) => void;
   onDrawingClear: () => void;
+  onThrowObject: (id: string, vx: number, vy: number) => void;
 }
 
 export function UnifiedCanvas({

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UnifiedCanvas, CanvasObject, DrawingStroke } from './UnifiedCanvas';
+import { UnifiedCanvas, CanvasObject, DrawingStroke } from './UnifiedCanvasEnhanced';
 import { useWSCanvas } from './useWSCanvas';
 
 // --- Utils ---
@@ -71,7 +71,10 @@ export default function PartyWallApp() {
     sendDrawingStroke, 
     clearDrawing, 
     updateVideo,
-    moveObject
+    moveObject,
+    updateObject,
+    throwObject,
+    deleteObject
   } = useWSCanvas(wsUrl, HOUR_MS);
 
   // Handle window resize for responsive canvas
@@ -137,6 +140,33 @@ export default function PartyWallApp() {
       console.error("Failed to clear drawing:", error);
     }
   }, [clearDrawing]);
+
+  // Handle object updates
+  const handleObjectUpdate = useCallback(async (objectId: string, updates: Partial<CanvasObject>) => {
+    try {
+      await updateObject(objectId, updates);
+    } catch (error) {
+      console.error("Failed to update object:", error);
+    }
+  }, [updateObject]);
+
+  // Handle object throwing
+  const handleThrowObject = useCallback(async (objectId: string, vx: number, vy: number) => {
+    try {
+      await throwObject(objectId, vx, vy);
+    } catch (error) {
+      console.error("Failed to throw object:", error);
+    }
+  }, [throwObject]);
+
+  // Handle object deletion
+  const handleObjectDelete = useCallback(async (objectId: string) => {
+    try {
+      await deleteObject(objectId);
+    } catch (error) {
+      console.error("Failed to delete object:", error);
+    }
+  }, [deleteObject]);
 
   // Handle background clicks for message input
   const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
@@ -232,8 +262,11 @@ export default function PartyWallApp() {
             brushSize={brushSize}
             onObjectMove={handleObjectMove}
             onObjectSelect={handleObjectSelect}
+            onObjectUpdate={handleObjectUpdate}
+            onObjectDelete={handleObjectDelete}
             onDrawingStroke={handleDrawingStroke}
             onDrawingClear={handleDrawingClear}
+            onThrowObject={handleThrowObject}
           />
         </div>
       </div>
