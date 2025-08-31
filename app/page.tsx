@@ -460,97 +460,101 @@ function SetupPanel({ streamUrl, setStreamUrl, onUpdateVideo, user, onLogout }: 
   );
 }
 
-// --- INSANE STAT DATABASE ---
+// --- FERIASENCILLA MYTHOLOGY DATABASE ---
+// The FeriaSencilla Multiverse: A 2000s-2015 Internet Aesthetic Realm
+// Where Windows 98 aesthetics meet James Ferraro's hypnagogic vaporwave dreams
+// and early internet culture creates a digital liminal space of endless summer fairs
+
 const STAT_DATABASE = {
-  // Completely Random Categories
-  "🎮 Gaming Skills": [
-    { name: "Rage Quit Resistance", icon: "🤬" },
-    { name: "Button Mashing Technique", icon: "🕹️" },
-    { name: "Loading Screen Patience", icon: "⏳" },
-    { name: "Noob Crushing Ability", icon: "💀" },
-    { name: "Achievement Hunting", icon: "🏆" },
-    { name: "Speedrun Potential", icon: "⚡" },
+  // Core FeriaSencilla Abilities - The fundamental powers of digital summer
+  "🎡 FeriaCore Mastery": [
+    { name: "Carnival Ride Navigation", icon: "🎠" },
+    { name: "Cotton Candy Synthesis", icon: "🍭" },
+    { name: "Neon Light Harmonics", icon: "💡" },
+    { name: "Ticket Booth Persuasion", icon: "🎫" },
+    { name: "Funhouse Mirror Tolerance", icon: "🪞" },
+    { name: "Prize Counter Negotiation", icon: "🧸" },
   ],
   
-  "🍕 Life Essentials": [
-    { name: "Pizza Folding Technique", icon: "🍕" },
-    { name: "Caffeine Tolerance", icon: "☕" },
-    { name: "Sleep Procrastination", icon: "😴" },
-    { name: "Snack Optimization", icon: "🍿" },
-    { name: "Comfort Zone Expansion", icon: "🛋️" },
-    { name: "Midnight Fridge Raids", icon: "🥪" },
+  "💿 Hypnagogic Media Arts": [
+    { name: "VHS Glitch Channeling", icon: "📼" },
+    { name: "Mall Muzak Composition", icon: "🎵" },
+    { name: "MIDI Polyphony Control", icon: "🎹" },
+    { name: "Lowfi Texture Weaving", icon: "📺" },
+    { name: "Digital Nostalgia Synthesis", icon: "💾" },
+    { name: "Elevator Music Transcendence", icon: "🎶" },
   ],
 
-  "🔮 Mystical Nonsense": [
-    { name: "Aura Reading Accuracy", icon: "✨" },
-    { name: "Crystal Ball Clarity", icon: "🔮" },
-    { name: "Horoscope Dependency", icon: "⭐" },
-    { name: "Manifestation Power", icon: "🌟" },
-    { name: "Chakra Alignment", icon: "🧘" },
-    { name: "Vibe Check Sensitivity", icon: "📡" },
+  "🖥️ Windows 98 Shamanism": [
+    { name: "Start Menu Meditation", icon: "⊞" },
+    { name: "Screensaver Hypnosis", icon: "🌀" },
+    { name: "Blue Screen Immunity", icon: "💙" },
+    { name: "Dial-up Patience Mastery", icon: "📞" },
+    { name: "Registry Editing Divination", icon: "📁" },
+    { name: "Clippy Communication", icon: "📎" },
   ],
 
-  "🐱 Internet Culture": [
-    { name: "Meme Recognition Speed", icon: "🐸" },
-    { name: "Cat Video Appreciation", icon: "🐱" },
-    { name: "Troll Detection", icon: "👹" },
-    { name: "Rickroll Immunity", icon: "🎵" },
-    { name: "Comment Section Survival", icon: "💬" },
-    { name: "Viral Prediction", icon: "📈" },
+  "🌐 Early Web Archaeology": [
+    { name: "GeoCities Temple Building", icon: "🏠" },
+    { name: "Flash Animation Sorcery", icon: "⚡" },
+    { name: "HTML Table Mastery", icon: "📋" },
+    { name: "Animated GIF Crafting", icon: "✨" },
+    { name: "Web Ring Navigation", icon: "🔗" },
+    { name: "Under Construction Aesthetics", icon: "🚧" },
   ],
 
-  "🤡 Absurd Talents": [
-    { name: "Banana Peeling Efficiency", icon: "🍌" },
-    { name: "Rubber Duck Debugging", icon: "🦆" },
-    { name: "Spaghetti Twirling Mastery", icon: "🍝" },
-    { name: "Elevator Button Politics", icon: "🛗" },
-    { name: "WiFi Password Guessing", icon: "📶" },
-    { name: "Parallel Parking Anxiety", icon: "🚗" },
+  "📱 Proto-Social Networking": [
+    { name: "MSN Messenger Poetry", icon: "💬" },
+    { name: "MySpace Top 8 Politics", icon: "👥" },
+    { name: "Profile Song Curation", icon: "🎧" },
+    { name: "Away Message Philosophy", icon: "💭" },
+    { name: "Emoticon Fluency", icon: "😊" },
+    { name: "Webcam Artistry", icon: "📷" },
   ],
 
-  "🌈 Personality Quirks": [
-    { name: "Social Battery Level", icon: "🔋" },
-    { name: "Awkward Silence Tolerance", icon: "😶" },
-    { name: "Small Talk Avoidance", icon: "💬" },
-    { name: "Overthinking Capacity", icon: "🤔" },
-    { name: "Random Fact Storage", icon: "🧠" },
-    { name: "Procrastination Creativity", icon: "⏰" },
+  "🌴 Vaporwave Consciousness": [
+    { name: "A E S T H E T I C Recognition", icon: "🌺" },
+    { name: "Pastel Gradient Channeling", icon: "🌈" },
+    { name: "Synthwave Time Dilation", icon: "🕐" },
+    { name: "Marble Bust Communion", icon: "🗿" },
+    { name: "Grid Pattern Navigation", icon: "⬜" },
+    { name: "Sunset Frequency Tuning", icon: "🌅" },
   ],
 
-  "🦄 Pure Fantasy": [
-    { name: "Unicorn Belief Level", icon: "🦄" },
-    { name: "Dragon Negotiation", icon: "🐉" },
-    { name: "Fairy Communication", icon: "🧚" },
-    { name: "Magic Potion Brewing", icon: "🧪" },
-    { name: "Teleportation Accuracy", icon: "✨" },
-    { name: "Mind Reading Ethics", icon: "👁️" },
+  "🎮 Y2K Gaming Mastery": [
+    { name: "LAN Party Coordination", icon: "🖥️" },
+    { name: "Cheat Code Archaeology", icon: "🗝️" },
+    { name: "Demo Disk Curation", icon: "💿" },
+    { name: "Mod Installation Wizardry", icon: "🔧" },
+    { name: "High Score Immortalization", icon: "🏆" },
+    { name: "Loading Screen Zen", icon: "⏳" },
   ],
 
-  "🎭 Social Disasters": [
-    { name: "Dad Joke Delivery", icon: "👨" },
-    { name: "Karaoke Confidence", icon: "🎤" },
-    { name: "Dance Floor Courage", icon: "💃" },
-    { name: "Phone Call Anxiety", icon: "📞" },
-    { name: "Name Forgetting Rate", icon: "🏷️" },
-    { name: "Compliment Acceptance", icon: "😊" },
+  "📼 Liminal Space Navigation": [
+    { name: "Empty Mall Exploration", icon: "🏬" },
+    { name: "Poolrooms Pathfinding", icon: "🏊" },
+    { name: "Backrooms Level Mapping", icon: "🚪" },
+    { name: "Fluorescent Hum Interpretation", icon: "💡" },
+    { name: "Beige Architecture Appreciation", icon: "🏢" },
+    { name: "Temporal Echo Detection", icon: "👻" },
   ],
 
-  "🌊 Weather Powers": [
-    { name: "Rain Prediction Accuracy", icon: "🌧️" },
-    { name: "Sunburn Resistance", icon: "☀️" },
-    { name: "Snow Day Manifesting", icon: "❄️" },
-    { name: "Wind Direction Control", icon: "💨" },
-    { name: "Thunder Fear Level", icon: "⛈️" },
-    { name: "Rainbow Summoning", icon: "🌈" },
+  "🔊 Sound Collage Mastery": [
+    { name: "Sample Archaeology", icon: "🎵" },
+    { name: "Tape Loop Meditation", icon: "🔄" },
+    { name: "Field Recording Divination", icon: "🎙️" },
+    { name: "Frequency Drift Surfing", icon: "📻" },
+    { name: "Ambient Texture Layering", icon: "🌊" },
+    { name: "Plunderphonics Ethics", icon: "⚖️" },
   ],
 
-  "🚀 Space Cadet": [
-    { name: "Alien Communication", icon: "👽" },
-    { name: "Zero Gravity Adaptation", icon: "🚀" },
-    { name: "Constellation Naming", icon: "⭐" },
-    { name: "Meteor Dodging", icon: "☄️" },
-    { name: "Black Hole Resistance", icon: "🕳️" },
-    { name: "Spaceship Parking", icon: "🛸" },
+  "🌙 Digital Oneirism": [
+    { name: "Dream Journal Encryption", icon: "📔" },
+    { name: "REM Sleep Hacking", icon: "😴" },
+    { name: "Lucid Web Browsing", icon: "🌐" },
+    { name: "Subconscious Meme Processing", icon: "🧠" },
+    { name: "Hypnagogic State Maintenance", icon: "🌀" },
+    { name: "Sleep Paralysis Navigation", icon: "👁️" },
   ]
 };
 
@@ -606,9 +610,9 @@ function getStatCategoriesForDisplay(user: User) {
   
   // Convert to category format
   Object.entries(grouped).forEach(([icon, stats], index) => {
-    const categoryNames = ["Your Random Powers", "Weird Abilities", "Secret Skills", "Hidden Talents"];
+    const categoryKeys = Object.keys(STAT_DATABASE);
     categories.push({
-      title: `${icon} ${categoryNames[index % categoryNames.length]}`,
+      title: categoryKeys[index % categoryKeys.length] || `${icon} FeriaSencilla Powers`,
       stats
     });
   });
@@ -828,7 +832,7 @@ function CharacterStatsModal({ user, isOpen, onClose }: CharacterStatsModalProps
         {/* Footer with regenerate button */}
         <div className="mt-6 pt-4 border-t border-purple-300/30 text-center">
           <p className="text-purple-300 text-sm mb-3">
-            These stats were randomly generated when you joined! They're completely meaningless but absolutely yours! 🎲
+            These FeriaSencilla powers were channeled from the digital carnival realm when you joined! Each stat reflects your connection to the endless summer fair of 2000s internet nostalgia! 🎲
           </p>
           <button
             onClick={onClose}
@@ -1051,8 +1055,8 @@ export default function PartyWall() {
             <img 
               src={drawing.imageData} 
               alt="Drawing" 
-              className="absolute inset-0 w-full h-full object-cover opacity-80"
-              style={{ mixBlendMode: 'multiply' }}
+              className="absolute inset-0 w-full h-full object-cover opacity-90"
+              style={{ mixBlendMode: 'screen' }}
             />
           </div>
         ))}
