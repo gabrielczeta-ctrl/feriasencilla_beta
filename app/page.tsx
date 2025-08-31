@@ -51,7 +51,7 @@ function toEmbedUrl(raw: string, parentHost?: string) {
 }
 
 // --- Canvas Particle Field (fast + pretty) ---
-function ParticleField() {
+function ParticleField({ drawingCanvas }: { drawingCanvas?: HTMLCanvasElement | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<any[]>([]);
   const animationRef = useRef<number | null>(null);
@@ -82,6 +82,7 @@ function ParticleField() {
       vy: (Math.random() - 0.5) * 0.6,
       r: 1 + Math.random() * 2,
       t: Math.random() * Math.PI * 2,
+      color: "rgba(255,255,255,0.9)",
     }));
     particlesRef.current = parts;
 
@@ -93,13 +94,69 @@ function ParticleField() {
       g.addColorStop(0, "rgba(255,255,255,0.02)"); g.addColorStop(1, "rgba(0,0,0,0.02)");
       ctx.fillStyle = g; ctx.fillRect(0, 0, cvs.clientWidth, cvs.clientHeight);
       const mouse = mouseRef.current;
+      
+      // Get drawing data for particle interactions
+      let drawingImageData: ImageData | null = null;
+      if (drawingCanvas) {
+        try {
+          const drawingCtx = drawingCanvas.getContext('2d');
+          if (drawingCtx) {
+            drawingImageData = drawingCtx.getImageData(0, 0, drawingCanvas.width, drawingCanvas.height);
+          }
+        } catch (e) {
+          // Canvas might not be accessible, continue without drawing data
+        }
+      }
+      
       for (const p of particlesRef.current) {
         p.t += 0.002 * dt; p.vx += Math.cos(p.t) * 0.002; p.vy += Math.sin(p.t * 1.3) * 0.002;
+        
+        // Mouse interaction
         const dx = p.x - mouse.x, dy = p.y - mouse.y; const d2 = dx * dx + dy * dy;
         if (d2 < 20000) { const f = 0.06; const inv = 1 / Math.sqrt(d2 + 0.001); p.vx += dx * inv * f; p.vy += dy * inv * f; }
+        
+        // Drawing interaction - particles attracted to drawn pixels
+        if (drawingImageData) {
+          const canvasX = Math.floor((p.x / cvs.clientWidth) * drawingCanvas!.width);
+          const canvasY = Math.floor((p.y / cvs.clientHeight) * drawingCanvas!.height);
+          
+          if (canvasX >= 0 && canvasX < drawingCanvas!.width && canvasY >= 0 && canvasY < drawingCanvas!.height) {
+            const pixelIndex = (canvasY * drawingCanvas!.width + canvasX) * 4;
+            const alpha = drawingImageData.data[pixelIndex + 3]; // Alpha channel
+            
+            if (alpha > 128) { // If there's a visible drawing here
+              const attractionForce = 0.08;
+              const targetX = (canvasX / drawingCanvas!.width) * cvs.clientWidth;
+              const targetY = (canvasY / drawingCanvas!.height) * cvs.clientHeight;
+              const drawDx = targetX - p.x;
+              const drawDy = targetY - p.y;
+              const drawD2 = drawDx * drawDx + drawDy * drawDy;
+              
+              if (drawD2 < 10000) { // Within attraction range
+                const inv = 1 / Math.sqrt(drawD2 + 0.001);
+                p.vx += drawDx * inv * attractionForce;
+                p.vy += drawDy * inv * attractionForce;
+                
+                // Change particle color based on drawing
+                const r = drawingImageData.data[pixelIndex];
+                const g = drawingImageData.data[pixelIndex + 1];
+                const b = drawingImageData.data[pixelIndex + 2];
+                p.color = `rgba(${r},${g},${b},0.9)`;
+              }
+            } else {
+              // Reset to default color when not near drawing
+              p.color = "rgba(255,255,255,0.9)";
+            }
+          }
+        }
+        
         p.x += p.vx * dt * 0.06; p.y += p.vy * dt * 0.06;
         if (p.x < -10) p.x = cvs.clientWidth + 10; if (p.x > cvs.clientWidth + 10) p.x = -10; if (p.y < -10) p.y = cvs.clientHeight + 10; if (p.y > cvs.clientHeight + 10) p.y = -10;
-        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fill();
+        
+        ctx.beginPath(); 
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); 
+        ctx.fillStyle = p.color || "rgba(255,255,255,0.9)"; 
+        ctx.fill();
       }
       animationRef.current = requestAnimationFrame(draw);
     }
@@ -813,9 +870,8 @@ export default function PartyWall() {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Set black background
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // Clear canvas for transparent drawing
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         drawingDataRef.current = canvas.toDataURL();
       }
     }
@@ -966,7 +1022,7 @@ export default function PartyWall() {
 
   return (
     <div ref={containerRef} className="relative w-full min-h-[100dvh] overflow-x-hidden overflow-y-auto bg-black text-white" onClick={onBackgroundClick}>
-      <ParticleField />
+      <ParticleField drawingCanvas={canvasRef.current} />
 
       {/* Floating notes */}
       <div className="absolute inset-0">
@@ -993,21 +1049,22 @@ export default function PartyWall() {
         )}
       </AnimatePresence>
 
-      {/* Drawing Canvas */}
+      {/* Drawing Canvas Overlay */}
       {canvasMode === 'draw' && (
-        <div className="canvas-area absolute inset-0 z-40 overflow-auto">
-          <div className="relative" style={{ width: '200vw', height: '200vh', minWidth: '1920px', minHeight: '1080px' }}>
-            <canvas
-              ref={canvasRef}
-              className="absolute top-0 left-0 cursor-crosshair bg-white border border-gray-300"
-              width={1920}
-              height={1080}
-              style={{
-                width: '1920px',
-                height: '1080px',
-              }}
+        <div className="canvas-area absolute inset-0 z-30 pointer-events-auto">
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 w-full h-full cursor-crosshair"
+            width={1920}
+            height={1080}
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: 'transparent',
+            }}
             onMouseDown={(e) => {
               if (!canvasRef.current) return;
+              e.preventDefault();
               isDrawingRef.current = true;
               const rect = canvasRef.current.getBoundingClientRect();
               const scaleX = canvasRef.current.width / rect.width;
@@ -1018,6 +1075,7 @@ export default function PartyWall() {
             }}
             onMouseMove={(e) => {
               if (!isDrawingRef.current || !canvasRef.current || !lastPointRef.current) return;
+              e.preventDefault();
               
               const ctx = canvasRef.current.getContext('2d');
               if (!ctx) return;
@@ -1031,7 +1089,7 @@ export default function PartyWall() {
               ctx.beginPath();
               ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
               ctx.lineTo(x, y);
-              ctx.strokeStyle = drawingTool === 'eraser' ? '#000000' : drawingColor;
+              ctx.strokeStyle = drawingTool === 'eraser' ? 'transparent' : drawingColor;
               ctx.lineWidth = brushSize;
               ctx.lineCap = 'round';
               ctx.globalCompositeOperation = drawingTool === 'eraser' ? 'destination-out' : 'source-over';
@@ -1082,7 +1140,7 @@ export default function PartyWall() {
               ctx.beginPath();
               ctx.moveTo(lastPointRef.current.x, lastPointRef.current.y);
               ctx.lineTo(x, y);
-              ctx.strokeStyle = drawingTool === 'eraser' ? '#000000' : drawingColor;
+              ctx.strokeStyle = drawingTool === 'eraser' ? 'transparent' : drawingColor;
               ctx.lineWidth = brushSize;
               ctx.lineCap = 'round';
               ctx.globalCompositeOperation = drawingTool === 'eraser' ? 'destination-out' : 'source-over';
@@ -1104,8 +1162,7 @@ export default function PartyWall() {
                 }
               }, 2000);
             }}
-            />
-          </div>
+          />
         </div>
       )}
 
@@ -1173,8 +1230,7 @@ export default function PartyWall() {
                   if (canvasRef.current) {
                     const ctx = canvasRef.current.getContext('2d');
                     if (ctx) {
-                      ctx.fillStyle = '#000000';
-                      ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+                      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
                       setHasUnsavedChanges(true);
                     }
                   }
