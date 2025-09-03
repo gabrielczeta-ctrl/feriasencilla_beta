@@ -454,7 +454,7 @@ async function handlePlayerAction(ws, msg, ip) {
   // If AI DM is enabled, process the action
   if (room.settings.useAIDM) {
     const characterForAction = player.character || { name: characterName };
-    const dmResponse = await processAIAction(room, characterForAction, action);
+    const dmResponse = await processAIAction(room, characterForAction, action, player);
     
     if (dmResponse) {
       const dmMessage = {
@@ -554,7 +554,7 @@ async function handleChatMessage(ws, msg, ip) {
 }
 
 // Helper functions
-async function processAIAction(room, character, action) {
+async function processAIAction(room, character, action, actingPlayer) {
   try {
     const context = {
       playerInput: action,
@@ -562,17 +562,53 @@ async function processAIAction(room, character, action) {
       players: room.players.map(p => p.character).filter(Boolean),
       gameState: room.gameState,
       roomId: room.id,
+      actingPlayer: actingPlayer,
       recentActions: room.gameState.chatLog.slice(-5).map(msg => msg.content)
     };
 
     console.log(`🎲 Claude processing action for ${character.name}: "${action}"`);
     const response = await claudeDM.processPlayerAction(context);
     
+    // Handle automatic dice rolling if Claude requests it
+    let diceResults = null;
+    if (response.diceRoll?.required) {
+      console.log(`🎲 Rolling ${response.diceRoll.dice} for ${response.diceRoll.type} (DC ${response.diceRoll.difficulty})`);
+      
+      diceResults = rollDiceExpression(response.diceRoll.dice);
+      const success = diceResults.total >= response.diceRoll.difficulty;
+      
+      // Add dice roll to game state
+      const diceRoll = {
+        id: generateId(),
+        playerId: actingPlayer.id,
+        playerName: character.name,
+        expression: response.diceRoll.dice,
+        results: diceResults.rolls,
+        total: diceResults.total,
+        type: response.diceRoll.type,
+        difficulty: response.diceRoll.difficulty,
+        success: success,
+        timestamp: Date.now()
+      };
+      
+      room.gameState.dice.push(diceRoll);
+      
+      // Broadcast dice roll
+      broadcast({
+        type: "dice_rolled",
+        roll: diceRoll,
+        timestamp: Date.now()
+      }, room.id);
+      
+      console.log(`🎲 ${character.name} rolled ${diceResults.total} vs DC ${response.diceRoll.difficulty}: ${success ? 'SUCCESS' : 'FAILURE'}`);
+    }
+    
     // Update room state if Claude provided scene updates
     if (response.sceneUpdate) {
-      if (response.sceneUpdate.location) {
+      if (response.sceneUpdate.location && response.sceneUpdate.location !== room.gameState.story.location) {
         room.gameState.story.location = response.sceneUpdate.location;
         room.currentScene = response.sceneUpdate.location;
+        console.log(`🌍 Scene changed to: ${response.sceneUpdate.location}`);
       }
       if (response.sceneUpdate.description) {
         room.gameState.story.sceneDescription = response.sceneUpdate.description;
@@ -580,37 +616,91 @@ async function processAIAction(room, character, action) {
       if (response.sceneUpdate.availableActions) {
         room.gameState.story.availableActions = response.sceneUpdate.availableActions;
       }
+      
+      // Update NPCs if there are new developments
+      if (response.sceneUpdate.newDevelopment) {
+        console.log(`📖 Story development: ${response.sceneUpdate.newDevelopment}`);
+      }
     }
 
-    // Handle NPC dialogue
-    if (response.npcDialogue) {
+    // Handle NPC responses (updated structure)
+    if (response.npcResponse) {
       setTimeout(() => {
         const npcMessage = {
           id: generateId(),
           playerId: 'npc',
-          playerName: response.npcDialogue.npcName,
+          playerName: response.npcResponse.npcName,
           type: 'chat',
-          content: response.npcDialogue.dialogue,
+          content: response.npcResponse.dialogue,
           timestamp: Date.now()
         };
         
         room.gameState.chatLog.push(npcMessage);
-        saveRoom(room); // Save the updated room
+        saveRoom(room);
         
         broadcast({
           type: "chat_message",
           message: npcMessage,
           timestamp: Date.now()
         }, room.id);
-      }, 1000); // Slight delay for realism
+        
+        console.log(`💬 NPC ${response.npcResponse.npcName}: "${response.npcResponse.dialogue}"`);
+      }, 1500); // Delay for realism
     }
 
-    return response.narration || `${character.name} ${action}. The adventure continues...`;
+    // Handle consequences
+    if (response.consequences) {
+      if (response.consequences.immediate) {
+        console.log(`⚡ Immediate consequence: ${response.consequences.immediate}`);
+      }
+      if (response.consequences.ongoing) {
+        console.log(`📝 Ongoing consequence: ${response.consequences.ongoing}`);
+        // Store ongoing consequences in world state
+        if (!room.gameState.story.worldState.consequences) {
+          room.gameState.story.worldState.consequences = [];
+        }
+        room.gameState.story.worldState.consequences.push({
+          action: action,
+          consequence: response.consequences.ongoing,
+          timestamp: Date.now()
+        });
+      }
+    }
+
+    // Build final narration including dice results
+    let finalNarration = response.narration || `${character.name} ${action}. The adventure continues...`;
+    
+    if (diceResults) {
+      const diceResultText = diceResults.total >= response.diceRoll.difficulty ? 
+        `(Rolled ${diceResults.total} - Success!)` : 
+        `(Rolled ${diceResults.total} - Failed!)`;
+      finalNarration += ` ${diceResultText}`;
+    }
+    
+    return finalNarration;
     
   } catch (error) {
     console.error('❌ Claude processing error:', error);
     return `As ${character.name} ${action}, something interesting happens... (The DM seems distracted for a moment)`;
   }
+}
+
+// Helper function to roll dice expressions
+function rollDiceExpression(expression) {
+  const match = expression.match(/(\d+)d(\d+)([+-]\d+)?/);
+  if (!match) return { rolls: [1], total: 1 };
+  
+  const numDice = parseInt(match[1]);
+  const dieSize = parseInt(match[2]);
+  const modifier = parseInt(match[3] || '0');
+  
+  const rolls = [];
+  for (let i = 0; i < Math.min(numDice, 10); i++) {
+    rolls.push(Math.floor(Math.random() * dieSize) + 1);
+  }
+  
+  const total = rolls.reduce((sum, roll) => sum + roll, 0) + modifier;
+  return { rolls, total };
 }
 
 function parseDiceExpression(expression) {

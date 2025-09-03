@@ -71,49 +71,70 @@ Keep it concise but engaging!`;
     }
 
     try {
-      const { playerInput, currentScene, players, gameState, roomId } = context;
+      const { playerInput, currentScene, players, gameState, roomId, actingPlayer } = context;
       
-      const prompt = `You are an expert D&D Dungeon Master running a live game.
+      // Build comprehensive context
+      const sceneContext = this.buildSceneContext(gameState);
+      const playerContext = this.buildPlayerContext(actingPlayer, players);
+      const actionType = this.analyzeActionType(playerInput);
+      const diceRoll = this.shouldRollDice(actionType, playerInput);
 
-CURRENT SCENE: ${currentScene}
-LOCATION: ${gameState.story?.location || 'Unknown'}
-SCENE DESCRIPTION: ${gameState.story?.sceneDescription || 'A mysterious place'}
+      const prompt = `You are a skilled D&D 5e Dungeon Master. Respond to player actions with rich narrative and consistent world-building.
 
-PLAYERS: ${players.map(p => p.name).join(', ')}
-PLAYER ACTION: "${playerInput}"
+CRITICAL: Never repeat previous responses. Always advance the story. Track NPCs and locations consistently.
 
-RECENT CONTEXT: ${context.recentActions?.slice(-3).join('. ') || 'Game just started'}
+=== CURRENT GAME STATE ===
+Location: ${gameState.story?.location || 'Unknown'}
+Scene: ${gameState.story?.sceneDescription || 'A mysterious place'}
+Available Actions: ${gameState.story?.availableActions?.join(', ') || 'Explore'}
 
-Respond as the DM would, with:
-1. A narrative response to the player's action
-2. Any consequences or new developments
-3. Updated scene if location changes
-4. NPC dialogue if relevant
+Active NPCs:
+${gameState.story?.npcs?.map(npc => `- ${npc.name}: ${npc.description} (${npc.personality})`).join('\n') || 'None'}
 
-Response format (JSON):
+=== ACTING PLAYER ===
+${playerContext}
+
+=== RECENT STORY CONTEXT ===
+${sceneContext}
+
+=== PLAYER ACTION ===
+"${playerInput}"
+${diceRoll.required ? `DICE REQUIRED: ${diceRoll.type} (DC ${diceRoll.difficulty})` : ''}
+
+=== INSTRUCTIONS ===
+1. Provide immediate consequences of the action
+2. Advance the narrative meaningfully - NO REPETITION
+3. If combat/conflict: be decisive with outcomes  
+4. Track NPCs consistently (names, personalities, relationships)
+5. Create new developments, don't loop conversations
+6. If the player is being disruptive: use creative consequences
+
+Response format (valid JSON only):
 {
-  "narration": "What happens as a result of the action...",
+  "narration": "Immediate vivid description of what happens (2-3 sentences max)",
   "sceneUpdate": {
-    "location": "current location name",
-    "description": "updated scene description if changed",
-    "availableActions": ["new action 1", "new action 2", "..."]
+    "location": "${gameState.story?.location}",
+    "description": "Updated scene if changed",
+    "availableActions": ["specific action 1", "specific action 2", "specific action 3"],
+    "newDevelopment": "Major story progression if any"
   },
-  "npcDialogue": {
-    "npcName": "NPC Name",
-    "dialogue": "What the NPC says"
+  "npcResponse": {
+    "npcName": "Specific NPC name",
+    "dialogue": "Direct speech response",
+    "action": "What the NPC does physically"
   },
-  "diceRoll": {
-    "required": false,
-    "type": "ability_check",
-    "difficulty": 15
-  }
-}
-
-Keep responses concise but vivid!`;
+  "consequences": {
+    "immediate": "What happens right now",
+    "ongoing": "Lasting effects on world/relationships"
+  },
+  "diceRoll": ${JSON.stringify(diceRoll)},
+  "storyProgression": "How this moves the adventure forward"
+}`;
 
       const response = await anthropic.messages.create({
         model: 'claude-3-haiku-20240307',
-        max_tokens: 400,
+        max_tokens: 500,
+        temperature: 0.8,
         messages: [{ role: 'user', content: prompt }]
       });
 
@@ -122,9 +143,10 @@ Keep responses concise but vivid!`;
       
       if (jsonMatch) {
         const actionResult = JSON.parse(jsonMatch[0]);
-        console.log('🎲 Claude processed action for room:', roomId);
+        console.log(`🎲 Claude processed: ${playerInput.slice(0, 50)}... -> ${actionResult.narration?.slice(0, 50)}...`);
         return actionResult;
       } else {
+        console.warn('⚠️ Claude returned non-JSON response:', content);
         throw new Error('Invalid JSON response from Claude');
       }
 
@@ -132,6 +154,60 @@ Keep responses concise but vivid!`;
       console.error('❌ Claude action processing error:', error.message);
       return this.getFallbackActionResponse(context);
     }
+  }
+
+  // Analyze what type of action the player is attempting
+  analyzeActionType(input) {
+    const action = input.toLowerCase();
+    if (action.includes('attack') || action.includes('hit') || action.includes('fight') || action.includes('kill')) return 'combat';
+    if (action.includes('talk') || action.includes('say') || action.includes('ask') || action.includes('tell')) return 'social';
+    if (action.includes('search') || action.includes('look') || action.includes('examine') || action.includes('investigate')) return 'investigation';
+    if (action.includes('sneak') || action.includes('hide') || action.includes('stealth')) return 'stealth';
+    if (action.includes('climb') || action.includes('jump') || action.includes('run') || action.includes('swim')) return 'athletics';
+    if (action.includes('cast') || action.includes('spell') || action.includes('magic')) return 'magic';
+    return 'general';
+  }
+
+  // Determine if a dice roll is needed
+  shouldRollDice(actionType, input) {
+    const action = input.toLowerCase();
+    
+    // Combat actions
+    if (actionType === 'combat' || action.includes('attack')) {
+      return { required: true, type: 'attack_roll', difficulty: 15, dice: '1d20' };
+    }
+    
+    // Skill checks
+    if (actionType === 'athletics') return { required: true, type: 'strength_check', difficulty: 12, dice: '1d20' };
+    if (actionType === 'stealth') return { required: true, type: 'dexterity_check', difficulty: 13, dice: '1d20' };
+    if (actionType === 'investigation') return { required: true, type: 'intelligence_check', difficulty: 12, dice: '1d20' };
+    if (actionType === 'social') return { required: true, type: 'charisma_check', difficulty: 12, dice: '1d20' };
+    
+    // Dangerous or difficult actions
+    if (action.includes('dangerous') || action.includes('difficult') || action.includes('risky')) {
+      return { required: true, type: 'general_check', difficulty: 13, dice: '1d20' };
+    }
+    
+    return { required: false };
+  }
+
+  // Build scene context from recent actions
+  buildSceneContext(gameState) {
+    const recentMessages = gameState.chatLog?.slice(-8) || [];
+    return recentMessages.map(msg => `${msg.playerName}: ${msg.content}`).join('\n');
+  }
+
+  // Build player context including character info
+  buildPlayerContext(actingPlayer, allPlayers) {
+    if (!actingPlayer) return 'Unknown adventurer';
+    
+    const character = actingPlayer.character;
+    if (!character) return `${actingPlayer.name} (no character sheet)`;
+    
+    return `${character.name} (${character.race} ${character.class}, Level ${character.level})
+Stats: STR ${character.stats?.strength || 10}, DEX ${character.stats?.dexterity || 10}, CON ${character.stats?.constitution || 10}
+HP: ${character.hitPoints?.current || 10}/${character.hitPoints?.maximum || 10}
+Background: ${character.backstory || 'Unknown'}`;
   }
 
   // Fallback responses when Claude API is unavailable

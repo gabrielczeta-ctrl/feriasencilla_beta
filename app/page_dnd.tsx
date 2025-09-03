@@ -172,7 +172,7 @@ export default function DnDPlatform() {
   if (gamePhase === 'login') {
     return (
       <div className="min-h-screen flex items-center justify-center relative">
-        <FireShaderBackground />
+        <FireShaderBackground setting="tavern" location="Welcome Hall" />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -222,7 +222,7 @@ export default function DnDPlatform() {
   if (gamePhase === 'lobby') {
     return (
       <div className="min-h-screen text-white p-4 relative">
-        <FireShaderBackground />
+        <FireShaderBackground setting="tavern" location="Campaign Lobby" />
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold">🏰 Campaign Lobby</h1>
@@ -343,7 +343,7 @@ export default function DnDPlatform() {
   if (gamePhase === 'character_creation') {
     return (
       <div className="min-h-screen text-white p-4 relative">
-        <FireShaderBackground />
+        <FireShaderBackground setting="tavern" location="Character Creation" />
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -404,7 +404,10 @@ export default function DnDPlatform() {
 
     return (
       <div className="min-h-screen text-white relative">
-        <FireShaderBackground />
+        <FireShaderBackground 
+          setting={currentRoom?.gameState?.story?.location || 'tavern'}
+          location={currentRoom?.currentScene || currentRoom?.gameState?.story?.location || 'The Prancing Pony'}
+        />
         {/* Header */}
         <div className="bg-black/20 p-4 border-b border-white/10">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
