@@ -91,14 +91,14 @@ const FireShaderBackground: React.FC = () => {
 };
 
 class FireParticle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  size: number;
-  hue: number;
+  x!: number;
+  y!: number;
+  vx!: number;
+  vy!: number;
+  life!: number;
+  maxLife!: number;
+  size!: number;
+  hue!: number;
   
   constructor() {
     this.reset();
