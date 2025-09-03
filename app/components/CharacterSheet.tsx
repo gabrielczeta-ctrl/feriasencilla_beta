@@ -137,8 +137,8 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto bg-gray-900 text-white p-4 sm:p-6 rounded-lg min-h-screen"
-         style={{ maxHeight: 'none' }}>
+    <div className="w-full max-w-6xl mx-auto bg-gray-900 text-white p-4 sm:p-6 rounded-lg"
+         style={{ minHeight: 'auto' }}>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">
           {isEditing ? 'Edit Character' : 'Create Character'}

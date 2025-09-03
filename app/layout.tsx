@@ -1,10 +1,8 @@
+'use client';
+
 import type { Metadata } from 'next'
 import './globals.css'
-
-export const metadata: Metadata = {
-  title: 'Realtime Party Wall',
-  description: 'A collaborative realtime message wall powered by WebSocket + Redis',
-}
+import { GameStateProvider } from './contexts/GameStateContext';
 
 export default function RootLayout({
   children,
@@ -13,7 +11,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <GameStateProvider>
+          {children}
+        </GameStateProvider>
+      </body>
     </html>
   )
 }

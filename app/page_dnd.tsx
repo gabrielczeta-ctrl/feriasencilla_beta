@@ -1,23 +1,24 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDnDWebSocket } from './hooks/useDnDWebSocket';
+import { useGameState } from './contexts/GameStateContext';
 import CharacterSheet from './components/CharacterSheet';
 import CharacterCustomization from './components/CharacterCustomization';
 import FireShaderBackground from './components/FireShaderBackground';
+import GameHUD from './components/GameHUD';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 
 export default function DnDPlatform() {
+  const { state, dispatch } = useGameState();
   const [playerName, setPlayerName] = useState('');
-  const [gamePhase, setGamePhase] = useState<'login' | 'lobby' | 'character_creation' | 'character_customization' | 'playing'>('login');
-  const [showCharacterSheet, setShowCharacterSheet] = useState(false);
-  const [showCharacterProfile, setShowCharacterProfile] = useState(false);
   const [createdCharacter, setCreatedCharacter] = useState<Character | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [actionInput, setActionInput] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [diceInput, setDiceInput] = useState('1d20');
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const [createRoomData, setCreateRoomData] = useState({
     roomName: '',
     description: '',
@@ -60,27 +61,40 @@ export default function DnDPlatform() {
 
   // Auto-refresh rooms when in lobby
   useEffect(() => {
-    if (gamePhase === 'lobby' && status === 'connected') {
+    if (state.phase === 'lobby' && status === 'connected') {
       refreshRooms();
       const interval = setInterval(refreshRooms, 5000);
       return () => clearInterval(interval);
     }
-  }, [gamePhase, status, refreshRooms]);
+  }, [state.phase, status, refreshRooms]);
 
-  // Update game phase based on current room state
+  // Auto-scroll chat when new messages arrive and auto-scroll is enabled
+  useEffect(() => {
+    if (state.chatAutoScroll && chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages, state.chatAutoScroll]);
+
+  // Update game state based on current room state
   useEffect(() => {
     if (currentRoom) {
+      dispatch({ type: 'SET_ROOM', payload: currentRoom });
       const currentPlayer = currentRoom.players.find(p => p.id === playerId);
+      dispatch({ type: 'SET_PLAYER', payload: currentPlayer });
+      
+      if (currentPlayer?.character) {
+        dispatch({ type: 'SET_CHARACTER', payload: currentPlayer.character });
+      }
+      
       if (currentPlayer && !currentPlayer.character) {
-        // Player needs to create character regardless of room phase
-        setGamePhase('character_creation');
+        dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
       } else if (currentPlayer && currentPlayer.character && currentRoom.gameState?.phase === 'playing') {
-        setGamePhase('playing');
+        dispatch({ type: 'SET_PHASE', payload: 'playing' });
       }
     } else if (status === 'connected') {
-      setGamePhase('lobby');
+      dispatch({ type: 'SET_PHASE', payload: 'lobby' });
     }
-  }, [currentRoom, playerId, status]);
+  }, [currentRoom, playerId, status, dispatch]);
 
   const handleLogin = () => {
     if (playerName.trim()) {
@@ -135,9 +149,9 @@ export default function DnDPlatform() {
   const handleCharacterSave = async (character: Character) => {
     try {
       setCreatedCharacter(character);
-      setShowCharacterSheet(false);
+      dispatch({ type: 'SET_MODAL', payload: 'none' });
       // Navigate to customization phase after character creation
-      setGamePhase('character_customization');
+      dispatch({ type: 'SET_PHASE', payload: 'character_customization' });
     } catch (error) {
       console.error('Failed to create character:', error);
     }
@@ -147,9 +161,10 @@ export default function DnDPlatform() {
     try {
       await createCharacter(finalCharacter);
       setCreatedCharacter(null);
+      dispatch({ type: 'SET_CHARACTER', payload: finalCharacter });
       // After customization, navigate to playing phase if in a room
       if (currentRoom && currentRoom.gameState?.phase === 'playing') {
-        setGamePhase('playing');
+        dispatch({ type: 'SET_PHASE', payload: 'playing' });
       }
     } catch (error) {
       console.error('Failed to create character:', error);
@@ -222,7 +237,7 @@ export default function DnDPlatform() {
   };
 
   // Login Screen
-  if (gamePhase === 'login') {
+  if (state.phase === 'login') {
     return (
       <div className="min-h-screen flex items-center justify-center relative">
         <FireShaderBackground setting="tavern" location="Welcome Hall" />
@@ -272,7 +287,7 @@ export default function DnDPlatform() {
   }
 
   // Room Lobby
-  if (gamePhase === 'lobby') {
+  if (state.phase === 'lobby') {
     return (
       <div className="min-h-screen text-white p-4 relative">
         <FireShaderBackground setting="tavern" location="Campaign Lobby" />
@@ -393,9 +408,9 @@ export default function DnDPlatform() {
   }
 
   // Character Creation
-  if (gamePhase === 'character_creation') {
+  if (state.phase === 'character_creation') {
     return (
-      <div className="min-h-screen text-white p-4 relative">
+      <div className="min-h-screen text-white p-4 relative overflow-auto">
         <FireShaderBackground setting="tavern" location="Character Creation" />
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6">
@@ -451,9 +466,9 @@ export default function DnDPlatform() {
   }
 
   // Character Customization Phase
-  if (gamePhase === 'character_customization' && createdCharacter) {
+  if (state.phase === 'character_customization' && createdCharacter) {
     return (
-      <div className="min-h-screen text-white p-4 relative">
+      <div className="min-h-screen text-white p-4 relative overflow-auto">
         <FireShaderBackground setting="tavern" location="Character Customization" />
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6">
@@ -481,15 +496,21 @@ export default function DnDPlatform() {
   }
 
   // Playing Phase
-  if (gamePhase === 'playing' && currentRoom) {
+  if (state.phase === 'playing' && currentRoom) {
     const currentPlayer = currentRoom.players.find(p => p.id === playerId);
     const isDM = currentPlayer?.role === 'dm';
 
     return (
-      <div className="min-h-screen text-white relative">
+      <div className="min-h-screen text-white relative overflow-auto">
         <FireShaderBackground 
           setting={currentRoom?.gameState?.story?.location || 'tavern'}
           location={currentRoom?.currentScene || currentRoom?.gameState?.story?.location || 'The Prancing Pony'}
+        />
+        
+        {/* Game HUD */}
+        <GameHUD
+          onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
+          onUpdateCharacterHP={updateCharacterHP}
         />
         {/* Header */}
         <div className="bg-black/20 p-4 border-b border-white/10">
@@ -498,14 +519,43 @@ export default function DnDPlatform() {
               <h1 className="text-2xl font-bold">{currentRoom.name}</h1>
               <p className="text-gray-400">
                 {currentRoom.gameState.story.location} | {currentRoom.players.length} players
+                {state.inCombat && <span className="ml-2 text-red-400">⚔️ Combat</span>}
               </p>
             </div>
-            <button
-              onClick={handleLeaveRoom}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
-            >
-              Leave
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => dispatch({ type: 'TOGGLE_HUD' })}
+                className={`px-3 py-1 rounded text-sm transition-colors ${
+                  state.showHUD 
+                    ? 'bg-purple-600 hover:bg-purple-700' 
+                    : 'bg-gray-600 hover:bg-gray-500'
+                }`}
+                title={state.showHUD ? 'Hide HUD' : 'Show HUD'}
+              >
+                {state.showHUD ? '🎮 HUD ON' : '🎮 HUD OFF'}
+              </button>
+              {isDM && (
+                <button
+                  onClick={() => {
+                    if (window.confirm('⚠️ DELETE SERVER: This will permanently delete the entire campaign and all data. Are you absolutely sure?')) {
+                      // TODO: Implement server deletion
+                      console.log('🗑️ DELETE SERVER requested for room:', currentRoom.id);
+                      alert('🚧 Server deletion functionality coming soon!');
+                    }
+                  }}
+                  className="px-3 py-1 bg-red-800 hover:bg-red-900 rounded text-sm transition-colors border border-red-600"
+                  title="Delete entire server (DM only)"
+                >
+                  🗑️ DELETE SERVER
+                </button>
+              )}
+              <button
+                onClick={handleLeaveRoom}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
+              >
+                Leave
+              </button>
+            </div>
           </div>
         </div>
 
@@ -545,8 +595,23 @@ export default function DnDPlatform() {
 
             {/* Chat Log */}
             <div className="bg-gray-900 p-6 rounded-lg">
-              <h2 className="text-xl font-semibold mb-3">Adventure Log</h2>
-              <div className="h-96 overflow-y-auto space-y-2">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-semibold">Adventure Log</h2>
+                <button
+                  onClick={() => dispatch({ type: 'TOGGLE_CHAT_AUTO_SCROLL' })}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    state.chatAutoScroll 
+                      ? 'bg-green-600 hover:bg-green-700' 
+                      : 'bg-gray-600 hover:bg-gray-500'
+                  }`}
+                  title={state.chatAutoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'}
+                >
+                  {state.chatAutoScroll ? '📜 Auto' : '📜 Manual'}
+                </button>
+              </div>
+              <div 
+                ref={chatContainerRef}
+                className="h-96 overflow-y-auto space-y-2 scroll-smooth">
                 {chatMessages.map((message) => (
                   <div key={message.id} className={`p-2 rounded text-sm ${
                     message.type === 'system' ? 'bg-purple-900/30 border-l-4 border-purple-500' :
@@ -622,13 +687,13 @@ export default function DnDPlatform() {
                 </div>
                 <div className="flex gap-2 mt-3">
                   <button
-                    onClick={() => setShowCharacterProfile(true)}
+                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'character-profile' })}
                     className="flex-1 p-2 bg-purple-600 hover:bg-purple-700 rounded transition-colors text-sm font-medium"
                   >
                     👤 Profile
                   </button>
                   <button
-                    onClick={() => setShowCharacterSheet(true)}
+                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'character-sheet' })}
                     className="flex-1 p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-sm"
                   >
                     📄 Edit Sheet
@@ -680,7 +745,7 @@ export default function DnDPlatform() {
                   Playing as: <span className="text-white font-medium">{currentPlayer?.name || "Anonymous Adventurer"}</span>
                 </p>
                 <button
-                  onClick={() => setGamePhase('character_creation')}
+                  onClick={() => dispatch({ type: 'SET_PHASE', payload: 'character_creation' })}
                   className="w-full p-3 bg-blue-600 hover:bg-blue-700 rounded transition-colors text-white font-medium"
                 >
                   ⚔️ Create Character Sheet
@@ -747,19 +812,66 @@ export default function DnDPlatform() {
               </motion.div>
             )}
 
+            {/* Game Status */}
+            <div className="bg-gray-900 p-4 rounded-lg">
+              <h3 className="font-semibold mb-3">Game Status</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Phase:</span>
+                  <span className="capitalize text-green-400">{state.phase}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">HUD:</span>
+                  <span className={state.showHUD ? 'text-green-400' : 'text-red-400'}>
+                    {state.showHUD ? 'Visible' : 'Hidden'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Auto-scroll:</span>
+                  <span className={state.chatAutoScroll ? 'text-green-400' : 'text-yellow-400'}>
+                    {state.chatAutoScroll ? 'ON' : 'OFF'}
+                  </span>
+                </div>
+                {state.inCombat && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Combat:</span>
+                      <span className="text-red-400">Active ⚔️</span>
+                    </div>
+                    {state.currentTurn && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Turn:</span>
+                        <span className="text-yellow-400">{state.currentTurn}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {state.activeModal !== 'none' && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Modal:</span>
+                    <span className="text-purple-400 capitalize">{state.activeModal.replace('-', ' ')}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Party */}
             <div className="bg-gray-900 p-4 rounded-lg">
-              <h3 className="font-semibold mb-3">Party</h3>
+              <h3 className="font-semibold mb-3">Party ({currentRoom.players.length})</h3>
               <div className="space-y-2">
                 {currentRoom.players.map((player) => (
                   <div key={player.id} className="flex items-center justify-between text-sm">
                     <span className={player.isOnline ? 'text-white' : 'text-gray-400'}>
                       {player.character?.name || player.name}
                       {player.role === 'dm' && ' 👑'}
+                      {player.id === playerId && ' (You)'}
                     </span>
-                    <div className={`w-2 h-2 rounded-full ${
-                      player.isOnline ? 'bg-green-400' : 'bg-gray-400'
-                    }`}></div>
+                    <div className="flex items-center gap-2">
+                      {player.character && <span className="text-green-400 text-xs">✓</span>}
+                      <div className={`w-2 h-2 rounded-full ${
+                        player.isOnline ? 'bg-green-400' : 'bg-gray-400'
+                      }`}></div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -769,13 +881,13 @@ export default function DnDPlatform() {
 
         {/* Character Sheet Modal */}
         <AnimatePresence>
-          {showCharacterSheet && currentPlayer?.character && (
+          {state.activeModal === 'character-sheet' && currentPlayer?.character && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-              onClick={() => setShowCharacterSheet(false)}
+              onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
             >
               <motion.div
                 initial={{ scale: 0.9 }}
@@ -786,8 +898,8 @@ export default function DnDPlatform() {
               >
                 <CharacterSheet
                   character={currentPlayer.character}
-                  onSave={() => setShowCharacterSheet(false)}
-                  onCancel={() => setShowCharacterSheet(false)}
+                  onSave={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
+                  onCancel={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
                   isEditing={true}
                 />
               </motion.div>
@@ -797,13 +909,13 @@ export default function DnDPlatform() {
 
         {/* Character Profile Modal */}
         <AnimatePresence>
-          {showCharacterProfile && currentPlayer?.character && (
+          {state.activeModal === 'character-profile' && currentPlayer?.character && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-              onClick={() => setShowCharacterProfile(false)}
+              onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
             >
               <motion.div
                 initial={{ scale: 0.9 }}
@@ -815,7 +927,7 @@ export default function DnDPlatform() {
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-2xl font-bold text-white">👤 Character Profile</h2>
                   <button
-                    onClick={() => setShowCharacterProfile(false)}
+                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
                     className="text-gray-400 hover:text-white text-2xl"
                   >
                     ×
