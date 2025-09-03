@@ -67,9 +67,9 @@ export default function DnDPlatform() {
   useEffect(() => {
     if (currentRoom) {
       const currentPlayer = currentRoom.players.find(p => p.id === playerId);
-      if (currentPlayer && !currentPlayer.character && currentRoom.gameState.phase === 'character_creation') {
+      if (currentPlayer && !currentPlayer.character && currentRoom.gameState?.phase === 'character_creation') {
         setGamePhase('character_creation');
-      } else if (currentRoom.gameState.phase === 'playing') {
+      } else if (currentRoom.gameState?.phase === 'playing') {
         setGamePhase('playing');
       }
     } else if (status === 'connected') {
@@ -316,7 +316,7 @@ export default function DnDPlatform() {
                           )}
                           <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
                             <span>Players: {room.players.length}/{room.maxPlayers}</span>
-                            <span>Phase: {room.gameState.phase}</span>
+                            <span>Phase: {room.gameState?.phase || 'Waiting'}</span>
                             {room.settings.useAIDM && <span className="text-purple-400">🤖 AI DM</span>}
                           </div>
                         </div>
