@@ -425,6 +425,36 @@ async function handleCreateCharacter(ws, msg, ip) {
   }
 }
 
+async function handleUpdateCharacter(ws, msg, ip) {
+  if (!ws.roomId || !msg.character) return;
+  
+  const room = await loadRoom(ws.roomId);
+  if (!room) return;
+  
+  const player = room.players.find(p => p.id === ws.playerId);
+  if (!player || !player.character) return;
+  
+  // Validate and sanitize character data
+  const updatedCharacter = sanitizeCharacter(msg.character);
+  updatedCharacter.id = player.character.id; // Keep original ID
+  updatedCharacter.playerId = ws.playerId;
+  updatedCharacter.createdAt = player.character.createdAt; // Keep original creation time
+  
+  player.character = updatedCharacter;
+  
+  room.lastActivity = Date.now();
+  await saveRoom(room);
+  
+  broadcast({
+    type: "character_updated",
+    playerId: ws.playerId,
+    character: updatedCharacter,
+    timestamp: Date.now()
+  }, ws.roomId);
+  
+  console.log(`🔄 ${player.name} updated character: ${updatedCharacter.name} (HP: ${updatedCharacter.hitPoints?.current}/${updatedCharacter.hitPoints?.maximum})`);
+}
+
 async function handlePlayerAction(ws, msg, ip) {
   if (!ws.roomId || !msg.action) return;
   

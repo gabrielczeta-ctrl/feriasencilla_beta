@@ -137,7 +137,7 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
   };
 
   return (
-    <div className="max-w-4xl mx-auto bg-gray-900 text-white p-6 rounded-lg">
+    <div className="max-w-5xl mx-auto bg-gray-900 text-white p-6 rounded-lg max-h-screen overflow-y-auto">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">
           {isEditing ? 'Edit Character' : 'Create Character'}

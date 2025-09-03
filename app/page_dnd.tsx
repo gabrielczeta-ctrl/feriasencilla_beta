@@ -4,13 +4,15 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDnDWebSocket } from './hooks/useDnDWebSocket';
 import CharacterSheet from './components/CharacterSheet';
+import CharacterCustomization from './components/CharacterCustomization';
 import FireShaderBackground from './components/FireShaderBackground';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 
 export default function DnDPlatform() {
   const [playerName, setPlayerName] = useState('');
-  const [gamePhase, setGamePhase] = useState<'login' | 'lobby' | 'character_creation' | 'playing'>('login');
+  const [gamePhase, setGamePhase] = useState<'login' | 'lobby' | 'character_creation' | 'character_customization' | 'playing'>('login');
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
+  const [createdCharacter, setCreatedCharacter] = useState<Character | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [actionInput, setActionInput] = useState('');
   const [chatInput, setChatInput] = useState('');
@@ -39,6 +41,7 @@ export default function DnDPlatform() {
     leaveRoom,
     refreshRooms,
     createCharacter,
+    updateCharacter,
     sendPlayerAction,
     rollDice,
     sendChatMessage
@@ -130,14 +133,58 @@ export default function DnDPlatform() {
 
   const handleCharacterSave = async (character: Character) => {
     try {
-      await createCharacter(character);
+      setCreatedCharacter(character);
       setShowCharacterSheet(false);
-      // After character creation, navigate to playing phase if in a room
+      // Navigate to customization phase after character creation
+      setGamePhase('character_customization');
+    } catch (error) {
+      console.error('Failed to create character:', error);
+    }
+  };
+
+  const handleCustomizationComplete = async (finalCharacter: Character) => {
+    try {
+      await createCharacter(finalCharacter);
+      setCreatedCharacter(null);
+      // After customization, navigate to playing phase if in a room
       if (currentRoom && currentRoom.gameState?.phase === 'playing') {
         setGamePhase('playing');
       }
     } catch (error) {
       console.error('Failed to create character:', error);
+    }
+  };
+
+  const updateCharacterHP = async (change: number) => {
+    if (!currentRoom || !playerId) return;
+    
+    const currentPlayer = currentRoom.players.find(p => p.id === playerId);
+    if (!currentPlayer?.character) return;
+
+    const character = currentPlayer.character;
+    const newCurrent = Math.max(0, Math.min(character.hitPoints.maximum, character.hitPoints.current + change));
+    
+    const updatedCharacter = {
+      ...character,
+      hitPoints: {
+        ...character.hitPoints,
+        current: newCurrent
+      }
+    };
+
+    try {
+      // Send character update to server
+      await updateCharacter(updatedCharacter);
+      
+      // Add a system message for HP changes
+      const hpChangeMsg = change > 0 ? 
+        `${character.name} regains ${change} hit points (${newCurrent}/${character.hitPoints.maximum} HP)` :
+        `${character.name} takes ${Math.abs(change)} damage (${newCurrent}/${character.hitPoints.maximum} HP)`;
+        
+      await sendChatMessage(hpChangeMsg, 'system');
+      
+    } catch (error) {
+      console.error('Failed to update character HP:', error);
     }
   };
 
@@ -402,6 +449,36 @@ export default function DnDPlatform() {
     );
   }
 
+  // Character Customization Phase
+  if (gamePhase === 'character_customization' && createdCharacter) {
+    return (
+      <div className="min-h-screen text-white p-4 relative">
+        <FireShaderBackground setting="tavern" location="Character Customization" />
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-3xl font-bold">🎒 Character Customization</h1>
+              <p className="text-gray-400 mt-1">
+                Customize {createdCharacter.name} - Choose starting equipment and traits
+              </p>
+            </div>
+            <button
+              onClick={handleLeaveRoom}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
+            >
+              Leave Campaign
+            </button>
+          </div>
+          <CharacterCustomization
+            character={createdCharacter}
+            onComplete={handleCustomizationComplete}
+            onCancel={() => handleLeaveRoom()}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // Playing Phase
   if (gamePhase === 'playing' && currentRoom) {
     const currentPlayer = currentRoom.players.find(p => p.id === playerId);
@@ -468,7 +545,7 @@ export default function DnDPlatform() {
             {/* Chat Log */}
             <div className="bg-gray-900 p-6 rounded-lg">
               <h2 className="text-xl font-semibold mb-3">Adventure Log</h2>
-              <div className="h-64 overflow-y-auto space-y-2">
+              <div className="h-96 overflow-y-auto space-y-2">
                 {chatMessages.map((message) => (
                   <div key={message.id} className={`p-2 rounded text-sm ${
                     message.type === 'system' ? 'bg-purple-900/30 border-l-4 border-purple-500' :
@@ -514,8 +591,44 @@ export default function DnDPlatform() {
                   <div className="text-gray-400">
                     Level {currentPlayer.character.level} {currentPlayer.character.race} {currentPlayer.character.class}
                   </div>
-                  <div className="text-red-400">
-                    HP: {currentPlayer.character.hitPoints.current}/{currentPlayer.character.hitPoints.maximum}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-red-400">
+                        HP: {currentPlayer.character.hitPoints.current}/{currentPlayer.character.hitPoints.maximum}
+                      </span>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => updateCharacterHP(-1)}
+                          disabled={currentPlayer.character.hitPoints.current <= 0}
+                          className="w-6 h-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 rounded text-xs font-bold transition-colors"
+                          title="Take 1 damage"
+                        >
+                          −
+                        </button>
+                        <button
+                          onClick={() => updateCharacterHP(1)}
+                          disabled={currentPlayer.character.hitPoints.current >= currentPlayer.character.hitPoints.maximum}
+                          className="w-6 h-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 rounded text-xs font-bold transition-colors"
+                          title="Heal 1 HP"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div className={`w-full bg-gray-700 rounded-full h-2 overflow-hidden`}>
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          currentPlayer.character.hitPoints.current <= currentPlayer.character.hitPoints.maximum * 0.25 
+                            ? 'bg-red-500' 
+                            : currentPlayer.character.hitPoints.current <= currentPlayer.character.hitPoints.maximum * 0.5
+                            ? 'bg-yellow-500'
+                            : 'bg-green-500'
+                        }`}
+                        style={{ 
+                          width: `${Math.max(0, (currentPlayer.character.hitPoints.current / currentPlayer.character.hitPoints.maximum) * 100)}%` 
+                        }}
+                      />
+                    </div>
                   </div>
                   <div className="text-blue-400">
                     AC: {currentPlayer.character.armorClass}
@@ -546,51 +659,61 @@ export default function DnDPlatform() {
               </div>
             )}
 
-            {/* Dice Roller */}
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <h3 className="font-semibold mb-3">Dice Roller</h3>
-              <div className="space-y-3">
-                <input
-                  type="text"
-                  value={diceInput}
-                  onChange={(e) => setDiceInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleRollDice()}
-                  placeholder="1d20+5"
-                  className="w-full p-2 bg-gray-800 border border-gray-700 rounded text-white text-sm"
-                />
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {['1d20', '1d12', '1d10', '1d8', '1d6', '1d4'].map(die => (
-                    <button
-                      key={die}
-                      onClick={() => setDiceInput(die)}
-                      className="p-1 bg-gray-800 hover:bg-gray-700 rounded"
+            {/* Enhanced Dice Results - Show recent automatic rolls with animations */}
+            {diceRolls.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gray-900 p-4 rounded-lg border border-gray-700"
+              >
+                <h3 className="font-semibold mb-3 text-yellow-400">🎲 Recent Rolls</h3>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {diceRolls.slice(-6).map((roll, index) => (
+                    <motion.div 
+                      key={roll.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="text-sm bg-gray-800 p-3 rounded border-l-4 border-l-blue-500 hover:bg-gray-700 transition-colors"
                     >
-                      {die}
-                    </button>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-blue-400 font-medium">{roll.playerName}</span>
+                          <span className="text-gray-400 mx-2">•</span>
+                          <span className="text-yellow-400 font-mono">{roll.expression}</span>
+                          {roll.description && (
+                            <span className="text-gray-300 text-xs block mt-1">{roll.description}</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-bold text-lg ${
+                            roll.success !== undefined ? 
+                              (roll.success ? 'text-green-400' : 'text-red-400') : 
+                              'text-white'
+                          }`}>
+                            {roll.total}
+                          </div>
+                          <div className="text-xs space-x-1">
+                            {roll.advantage && <span className="text-green-300">👍 ADV</span>}
+                            {roll.disadvantage && <span className="text-red-300">👎 DIS</span>}
+                            {roll.success !== undefined && (
+                              <div className={`${roll.success ? 'text-green-300' : 'text-red-300'} font-medium`}>
+                                DC {roll.difficulty} - {roll.success ? '✓ SUCCESS' : '✗ FAILED'}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {roll.results && roll.results.length > 1 && (
+                        <div className="text-xs text-gray-400 mt-2">
+                          Individual rolls: [{roll.results.join(', ')}]
+                        </div>
+                      )}
+                    </motion.div>
                   ))}
                 </div>
-                <button
-                  onClick={handleRollDice}
-                  className="w-full p-2 bg-red-600 hover:bg-red-700 rounded transition-colors text-sm"
-                >
-                  Roll Dice
-                </button>
-              </div>
-              
-              {/* Recent Rolls */}
-              <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2">Recent Rolls</h4>
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {diceRolls.slice(-5).map((roll) => (
-                    <div key={roll.id} className="text-xs bg-gray-800 p-2 rounded">
-                      <span className="text-gray-400">{roll.playerName}:</span>
-                      <span className="ml-1">{roll.expression}</span>
-                      <span className="ml-2 font-bold text-green-400">{roll.total}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+              </motion.div>
+            )}
 
             {/* Party */}
             <div className="bg-gray-900 p-4 rounded-lg">

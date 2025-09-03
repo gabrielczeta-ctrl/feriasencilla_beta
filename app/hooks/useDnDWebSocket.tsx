@@ -177,6 +177,17 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         }
         break;
 
+      case 'character_updated':
+        if (currentRoom) {
+          const updatedRoom = { ...currentRoom };
+          const player = updatedRoom.players.find(p => p.id === message.playerId);
+          if (player) {
+            player.character = message.character;
+            setCurrentRoom(updatedRoom);
+          }
+        }
+        break;
+
       case 'game_started':
         setCurrentRoom(message.room);
         break;
