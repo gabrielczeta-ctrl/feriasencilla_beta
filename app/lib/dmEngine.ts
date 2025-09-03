@@ -5,9 +5,9 @@ import {
 } from '../types/dnd';
 
 export class DMEngine {
-  private storyTemplates: StoryTemplate[];
-  private encounterTemplates: EncounterTemplate[];
-  private npcTemplates: Record<string, NPC>;
+  private storyTemplates: StoryTemplate[] = [];
+  private encounterTemplates: EncounterTemplate[] = [];
+  private npcTemplates: Record<string, NPC> = {};
   
   constructor() {
     this.initializeTemplates();
@@ -25,9 +25,9 @@ export class DMEngine {
       case 'playing':
         return this.handleExplorationAction(action, context);
       case 'combat':
-        return this.handleCombatAction(action, context);
+        return this.handleExplorationAction(action, context); // Use same handler for now
       default:
-        return this.handleGeneralAction(action, context);
+        return this.handleGeneralExploration(action, context);
     }
   }
 

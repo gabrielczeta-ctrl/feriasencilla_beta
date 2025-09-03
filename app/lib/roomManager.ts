@@ -16,14 +16,14 @@ export class RoomManager {
     name: string, 
     description: string, 
     dmId: string | null, 
-    settings: Partial<GameRoom['settings']> = {}
+    settings: Partial<GameRoom['settings']> & { maxPlayers?: number } = {}
   ): GameRoom {
     const roomId = this.generateRoomId();
     const room: GameRoom = {
       id: roomId,
       name,
       description,
-      dmId,
+      dmId: dmId || undefined,
       players: [],
       maxPlayers: settings.maxPlayers || 6,
       currentScene: 'Character Creation',
@@ -116,7 +116,7 @@ export class RoomManager {
         room.dmId = newDM.id;
       } else {
         // Enable AI DM if no players left
-        room.dmId = null;
+        room.dmId = undefined;
         room.settings.useAIDM = true;
       }
     }
@@ -142,9 +142,13 @@ export class RoomManager {
 
   // List public rooms
   getPublicRooms(): GameRoom[] {
-    return Array.from(this.rooms.values())
-      .filter(room => room.settings.isPublic)
-      .sort((a, b) => b.lastActivity - a.lastActivity);
+    const roomsArray: GameRoom[] = [];
+    for (const room of this.rooms.values()) {
+      if (room.settings.isPublic) {
+        roomsArray.push(room);
+      }
+    }
+    return roomsArray.sort((a, b) => b.lastActivity - a.lastActivity);
   }
 
   // Update character for player
@@ -429,7 +433,7 @@ export class RoomManager {
     const now = Date.now();
     let cleaned = 0;
     
-    for (const [roomId, room] of this.rooms.entries()) {
+    for (const [roomId, room] of Array.from(this.rooms.entries())) {
       if (now - room.lastActivity > maxAge) {
         // Remove all players from room mapping
         for (const player of room.players) {

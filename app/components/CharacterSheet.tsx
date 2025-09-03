@@ -90,11 +90,11 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
     if (!validateForm()) return;
 
     const character: Character = {
+      ...formData as Character,
       id: '',
       playerId: '',
       createdAt: Date.now(),
-      proficiencyBonus: getProficiencyBonus(formData.level!),
-      ...formData as Character
+      proficiencyBonus: getProficiencyBonus(formData.level!)
     };
 
     onSave(character);
