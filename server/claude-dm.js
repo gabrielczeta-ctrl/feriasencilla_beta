@@ -67,17 +67,28 @@ Keep it concise but engaging!`;
   // Process player actions with Claude
   async processPlayerAction(context) {
     if (!process.env.ANTHROPIC_API_KEY) {
-      return this.getFallbackActionResponse(context);
+      return null; // Don't send fallback responses
     }
 
     try {
       const { playerInput, currentScene, players, gameState, roomId, actingPlayer } = context;
       
+      // Validate action against character equipment and abilities
+      const validationResult = this.validatePlayerAction(playerInput, actingPlayer);
+      if (!validationResult.valid) {
+        return {
+          narration: validationResult.reason,
+          sceneUpdate: {
+            availableActions: this.getSuggestedActions(actingPlayer)
+          }
+        };
+      }
+      
       // Build comprehensive context
       const sceneContext = this.buildSceneContext(gameState);
       const playerContext = this.buildPlayerContext(actingPlayer, players);
       const actionType = this.analyzeActionType(playerInput);
-      const diceRoll = this.shouldRollDice(actionType, playerInput);
+      const diceRoll = this.shouldRollDice(actionType, playerInput, actingPlayer.character);
 
       const prompt = `You are a skilled D&D 5e Dungeon Master. Respond to player actions with rich narrative and consistent world-building.
 
@@ -168,27 +179,110 @@ Response format (valid JSON only):
     return 'general';
   }
 
-  // Determine if a dice roll is needed
-  shouldRollDice(actionType, input) {
+  // Enhanced dice roll determination - ALL actions should have dice rolls with proper stat modifiers
+  shouldRollDice(actionType, input, character) {
     const action = input.toLowerCase();
+    let diceRoll = { required: true, difficulty: 12, dice: '1d20' }; // Default for all actions
     
     // Combat actions
-    if (actionType === 'combat' || action.includes('attack')) {
-      return { required: true, type: 'attack_roll', difficulty: 15, dice: '1d20' };
+    if (actionType === 'combat' || action.includes('attack') || action.includes('fight') || action.includes('hit')) {
+      diceRoll.type = 'attack_roll';
+      diceRoll.difficulty = 15;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.strength || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // Athletics (Strength)
+    else if (actionType === 'athletics' || action.includes('climb') || action.includes('jump') || action.includes('lift') || action.includes('break')) {
+      diceRoll.type = 'strength_check';
+      diceRoll.difficulty = 13;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.strength || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // Stealth/Acrobatics (Dexterity)
+    else if (actionType === 'stealth' || action.includes('sneak') || action.includes('hide') || action.includes('dodge') || action.includes('balance')) {
+      diceRoll.type = 'dexterity_check';
+      diceRoll.difficulty = 13;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.dexterity || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // Investigation/Knowledge (Intelligence)
+    else if (actionType === 'investigation' || action.includes('search') || action.includes('examine') || action.includes('study') || action.includes('analyze')) {
+      diceRoll.type = 'intelligence_check';
+      diceRoll.difficulty = 12;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.intelligence || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // Perception/Insight (Wisdom)
+    else if (action.includes('listen') || action.includes('look') || action.includes('notice') || action.includes('sense') || action.includes('intuition')) {
+      diceRoll.type = 'wisdom_check';
+      diceRoll.difficulty = 12;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.wisdom || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // Social interactions (Charisma)
+    else if (actionType === 'social' || action.includes('talk') || action.includes('persuade') || action.includes('intimidate') || action.includes('deceive')) {
+      diceRoll.type = 'charisma_check';
+      diceRoll.difficulty = 12;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.charisma || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // Magic actions
+    else if (actionType === 'magic' || action.includes('cast') || action.includes('spell') || action.includes('magic')) {
+      // Use Intelligence for Wizards, Charisma for Sorcerers/Warlocks, Wisdom for Clerics/Druids
+      const spellcastingStat = this.getSpellcastingStat(character?.class || 'Fighter');
+      diceRoll.type = 'spell_attack';
+      diceRoll.difficulty = 14;
+      diceRoll.modifier = this.getStatModifier(character?.stats?.[spellcastingStat] || 10);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
+    }
+    // General actions
+    else {
+      diceRoll.type = 'general_check';
+      diceRoll.difficulty = 11;
+      // Use most relevant stat for the action, default to strongest stat
+      const relevantStat = this.getBestStatForAction(action, character?.stats);
+      diceRoll.modifier = this.getStatModifier(relevantStat);
+      diceRoll.dice = `1d20+${diceRoll.modifier}`;
     }
     
-    // Skill checks
-    if (actionType === 'athletics') return { required: true, type: 'strength_check', difficulty: 12, dice: '1d20' };
-    if (actionType === 'stealth') return { required: true, type: 'dexterity_check', difficulty: 13, dice: '1d20' };
-    if (actionType === 'investigation') return { required: true, type: 'intelligence_check', difficulty: 12, dice: '1d20' };
-    if (actionType === 'social') return { required: true, type: 'charisma_check', difficulty: 12, dice: '1d20' };
+    return diceRoll;
+  }
+
+  // Calculate D&D 5e stat modifier
+  getStatModifier(statValue) {
+    return Math.floor((statValue - 10) / 2);
+  }
+
+  // Get spellcasting stat for different classes
+  getSpellcastingStat(characterClass) {
+    const spellcastingStats = {
+      'Wizard': 'intelligence',
+      'Sorcerer': 'charisma', 
+      'Warlock': 'charisma',
+      'Bard': 'charisma',
+      'Cleric': 'wisdom',
+      'Druid': 'wisdom',
+      'Ranger': 'wisdom',
+      'Paladin': 'charisma'
+    };
+    return spellcastingStats[characterClass] || 'intelligence';
+  }
+
+  // Get the best stat for a general action
+  getBestStatForAction(action, stats) {
+    if (!stats) return 10;
     
-    // Dangerous or difficult actions
-    if (action.includes('dangerous') || action.includes('difficult') || action.includes('risky')) {
-      return { required: true, type: 'general_check', difficulty: 13, dice: '1d20' };
+    const statValues = Object.values(stats);
+    const highestStat = Math.max(...statValues);
+    
+    // Find which stat has the highest value
+    for (const [statName, value] of Object.entries(stats)) {
+      if (value === highestStat) {
+        return value;
+      }
     }
     
-    return { required: false };
+    return 10; // fallback
   }
 
   // Build scene context from recent actions
@@ -300,22 +394,104 @@ Response format (JSON):
     return scenarios[Math.floor(Math.random() * scenarios.length)];
   }
 
-  getFallbackActionResponse(context) {
-    const responses = [
-      {
-        narration: `You ${context.playerInput.toLowerCase()}. The world around you shifts slightly in response to your actions.`,
-        sceneUpdate: {
-          availableActions: ["Continue exploring", "Look around carefully", "Talk to someone", "Rest and observe"]
-        }
-      },
-      {
-        narration: `Your action draws the attention of nearby NPCs. Something interesting might happen next...`,
-        sceneUpdate: {
-          availableActions: ["Wait and see", "Take initiative", "Ask questions", "Prepare for anything"]
-        }
-      }
-    ];
+  // Validate player actions against their equipment and abilities
+  validatePlayerAction(playerInput, actingPlayer) {
+    if (!actingPlayer?.character) {
+      return { valid: false, reason: "You need to create a character first!" };
+    }
+
+    const character = actingPlayer.character;
+    const action = playerInput.toLowerCase();
     
-    return responses[Math.floor(Math.random() * responses.length)];
+    // Check for weapon-specific actions
+    if (action.includes('shoot') || action.includes('fire') || action.includes('revolver') || action.includes('gun')) {
+      const hasRangedWeapon = character.equipment?.some(item => 
+        item.type === 'weapon' && (
+          item.name.toLowerCase().includes('bow') ||
+          item.name.toLowerCase().includes('crossbow') ||
+          item.name.toLowerCase().includes('gun') ||
+          item.name.toLowerCase().includes('pistol') ||
+          item.name.toLowerCase().includes('revolver')
+        )
+      );
+      
+      if (!hasRangedWeapon) {
+        return { 
+          valid: false, 
+          reason: `${character.name} doesn't have any ranged weapons! You have: ${this.getEquipmentList(character.equipment)}` 
+        };
+      }
+    }
+    
+    // Check for spell actions
+    if (action.includes('cast') || action.includes('spell') || action.includes('magic')) {
+      const canCastSpells = ['Wizard', 'Sorcerer', 'Warlock', 'Cleric', 'Druid', 'Bard', 'Paladin', 'Ranger'].includes(character.class);
+      if (!canCastSpells) {
+        return { 
+          valid: false, 
+          reason: `${character.name} (${character.class}) cannot cast spells! Try using your class abilities instead.` 
+        };
+      }
+    }
+    
+    return { valid: true };
+  }
+
+  // Get equipment list for error messages
+  getEquipmentList(equipment) {
+    if (!equipment || equipment.length === 0) {
+      return "no equipment";
+    }
+    return equipment.map(item => item.name).join(', ');
+  }
+
+  // Suggest actions based on character abilities
+  getSuggestedActions(actingPlayer) {
+    if (!actingPlayer?.character) {
+      return ["Create a character", "Look around", "Talk to others"];
+    }
+
+    const character = actingPlayer.character;
+    const suggestions = ["Look around", "Talk to NPCs"];
+    
+    // Add class-specific suggestions
+    const classActions = {
+      'Fighter': ['Attack with weapon', 'Defend', 'Use combat maneuver'],
+      'Wizard': ['Cast a spell', 'Study surroundings', 'Identify magical items'],
+      'Rogue': ['Sneak', 'Search for traps', 'Pick locks', 'Steal'],
+      'Cleric': ['Cast healing spell', 'Turn undead', 'Pray for guidance'],
+      'Barbarian': ['Rage', 'Intimidate', 'Break things'],
+      'Ranger': ['Track', 'Shoot bow', 'Commune with nature'],
+      'Paladin': ['Smite evil', 'Lay on hands', 'Detect evil'],
+      'Bard': ['Play music', 'Inspire allies', 'Tell stories'],
+      'Sorcerer': ['Cast spell', 'Use metamagic', 'Wild magic surge'],
+      'Warlock': ['Cast eldritch blast', 'Use patron power', 'Make pact'],
+      'Druid': ['Wild shape', 'Cast nature spell', 'Talk to animals'],
+      'Monk': ['Use martial arts', 'Meditate', 'Use ki power']
+    };
+    
+    if (classActions[character.class]) {
+      suggestions.push(...classActions[character.class].slice(0, 2));
+    }
+    
+    // Add equipment-based suggestions
+    if (character.equipment) {
+      const weapons = character.equipment.filter(item => item.type === 'weapon');
+      const tools = character.equipment.filter(item => item.type === 'tool');
+      
+      if (weapons.length > 0) {
+        suggestions.push(`Use ${weapons[0].name}`);
+      }
+      if (tools.length > 0) {
+        suggestions.push(`Use ${tools[0].name}`);
+      }
+    }
+    
+    return suggestions.slice(0, 4); // Return max 4 suggestions
+  }
+
+  getFallbackActionResponse(context) {
+    // This should not be used anymore - return null to prevent generic responses
+    return null;
   }
 }

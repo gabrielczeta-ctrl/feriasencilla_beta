@@ -51,6 +51,7 @@ if (hasRedis) {
 // In-memory storage (fallback when Redis is not available)
 const gameRooms = new Map();
 const playerSessions = new Map(); // playerId -> { roomId, ws, lastSeen }
+const npcInteractionTimers = new Map(); // roomId -> timer
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
@@ -508,6 +509,9 @@ async function handlePlayerAction(ws, msg, ip) {
     dmResponse: room.settings.useAIDM ? room.gameState.chatLog[room.gameState.chatLog.length - 1] : null,
     timestamp: Date.now()
   }, ws.roomId);
+  
+  // Schedule timed NPC interactions after player action
+  scheduleNPCInteraction(room.id);
 }
 
 async function handleDiceRoll(ws, msg, ip) {
@@ -598,6 +602,12 @@ async function processAIAction(room, character, action, actingPlayer) {
 
     console.log(`🎲 Claude processing action for ${character.name}: "${action}"`);
     const response = await claudeDM.processPlayerAction(context);
+    
+    // If Claude doesn't provide a response (validation failed or API unavailable), don't send anything
+    if (!response) {
+      console.log('⏸️ No DM response - action validation failed or API unavailable');
+      return;
+    }
     
     // Handle automatic dice rolling if Claude requests it
     let diceResults = null;
@@ -991,6 +1001,98 @@ function generateId() {
 
 function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+// Schedule timed NPC interactions
+function scheduleNPCInteraction(roomId) {
+  // Clear existing timer for this room
+  if (npcInteractionTimers.has(roomId)) {
+    clearTimeout(npcInteractionTimers.get(roomId));
+  }
+  
+  // Schedule NPC interaction in 20-45 seconds
+  const delay = Math.random() * 25000 + 20000; // 20-45 seconds
+  
+  const timer = setTimeout(async () => {
+    try {
+      const room = await loadRoom(roomId);
+      if (!room || room.gameState.phase !== 'playing') return;
+      
+      // Generate NPC interaction
+      const npcResponse = await generateNPCInteraction(room);
+      if (npcResponse) {
+        // Add NPC message to chat
+        const npcMessage = {
+          id: generateId(),
+          playerId: 'npc',
+          playerName: npcResponse.npcName,
+          type: 'action',
+          content: npcResponse.dialogue,
+          timestamp: Date.now()
+        };
+        
+        room.gameState.chatLog.push(npcMessage);
+        room.lastActivity = Date.now();
+        await saveRoom(room);
+        
+        // Broadcast NPC interaction
+        broadcast({
+          type: 'chat_message',
+          message: npcMessage,
+          timestamp: Date.now()
+        }, roomId);
+        
+        console.log(`🎭 NPC interaction in room ${roomId}: ${npcResponse.npcName} - ${npcResponse.dialogue.slice(0, 50)}...`);
+        
+        // Schedule another interaction
+        scheduleNPCInteraction(roomId);
+      }
+    } catch (error) {
+      console.error('❌ Error in NPC interaction:', error);
+    }
+  }, delay);
+  
+  npcInteractionTimers.set(roomId, timer);
+}
+
+// Generate NPC interactions
+async function generateNPCInteraction(room) {
+  try {
+    // Simple fallback NPC interactions
+    const fallbackInteractions = [
+      { npcName: "Tavern Keeper", dialogue: "*wipes down glasses and glances at the adventurers*" },
+      { npcName: "Local Patron", dialogue: "*whispers something to their companion and looks around nervously*" },
+      { npcName: "Town Guard", dialogue: "*adjusts their armor and patrols the area*" },
+      { npcName: "Mysterious Stranger", dialogue: "*pulls their hood lower and studies the party from the shadows*" },
+      { npcName: "Village Elder", dialogue: "*strokes their beard thoughtfully while watching the events unfold*" }
+    ];
+    
+    // Use existing NPCs if available, otherwise use fallback
+    const availableNPCs = room.gameState.story?.npcs?.length > 0 
+      ? room.gameState.story.npcs.map(npc => ({ npcName: npc.name, dialogue: `*${npc.name} ${this.getNPCAction(npc)}*` }))
+      : fallbackInteractions;
+    
+    const randomNPC = availableNPCs[Math.floor(Math.random() * availableNPCs.length)];
+    
+    return randomNPC;
+  } catch (error) {
+    console.error('❌ NPC interaction generation failed:', error);
+    return null;
+  }
+}
+
+function getNPCAction(npc) {
+  const actions = [
+    "looks around the room curiously",
+    "adjusts their belongings", 
+    "mutters something under their breath",
+    "glances at the adventuring party",
+    "continues with their daily routine",
+    "pauses in their work to listen",
+    "shifts uncomfortably",
+    "nods approvingly at the proceedings"
+  ];
+  return actions[Math.floor(Math.random() * actions.length)];
 }
 
 // Redis pubsub → fan out to WS clients (if Redis connected)

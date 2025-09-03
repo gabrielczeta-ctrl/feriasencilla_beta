@@ -206,24 +206,24 @@ export default function CharacterCustomization({ character, onComplete, onCancel
   const getRaceTraits = (race: string): CharacterTraits => {
     const raceTraits: Record<string, CharacterTraits> = {
       'Human': {
-        positive: ['Adaptable', 'Ambitious', 'Determined'],
-        negative: ['Impatient', 'Sometimes prejudiced'],
-        quirks: ['Collects stories from other cultures', 'Has a lucky charm']
+        positive: ['Adaptable', 'Ambitious', 'Determined', 'Resourceful', 'Versatile', 'Diplomatic', 'Enterprising', 'Innovative', 'Courageous', 'Persevering', 'Social', 'Optimistic', 'Pragmatic', 'Quick learner', 'Leadership potential', 'Curious', 'Hardworking', 'Compassionate', 'Resilient', 'Creative'],
+        negative: ['Impatient', 'Sometimes prejudiced', 'Short-sighted', 'Overconfident', 'Restless', 'Greedy', 'Reckless', 'Stubborn pride', 'Jealous', 'Quick to judge', 'Emotionally volatile', 'Materialistic', 'Prone to conflict', 'Inconsistent', 'Competitive to a fault'],
+        quirks: ['Collects stories from other cultures', 'Has a lucky charm', 'Makes friends easily', 'Superstitious about numbers', 'Changes hairstyle frequently', 'Talks to animals', 'Always carries snacks', 'Hums while working', 'Makes lists for everything', 'Sleepwalks during stress', 'Lucky coin flipper', 'Remembers faces but not names', 'Draws on everything', 'Counts steps when walking', 'Names inanimate objects']
       },
       'Elf': {
-        positive: ['Graceful', 'Patient', 'Keen senses'],
-        negative: ['Aloof', 'Overly proud'],
-        quirks: ['Speaks in an archaic manner', 'Meditates instead of sleeping']
+        positive: ['Graceful', 'Patient', 'Keen senses', 'Long-lived wisdom', 'Nature-attuned', 'Perceptive', 'Elegant', 'Artistic', 'Mystical insight', 'Naturally magical', 'Poised', 'Culturally refined', 'Intuitive', 'Disciplined', 'Harmonious', 'Ancient knowledge', 'Serene', 'Noble bearing', 'Environmentally conscious', 'Spiritually connected'],
+        negative: ['Aloof', 'Overly proud', 'Slow to trust mortals', 'Arrogant', 'Melancholic', 'Detached', 'Condescending', 'Inflexible traditions', 'Overly cautious', 'Dismissive of brevity', 'Perfectionist', 'Emotionally distant', 'Elitist', 'Pessimistic about change', 'Withdrawn'],
+        quirks: ['Speaks in an archaic manner', 'Meditates instead of sleeping', 'Speaks to trees', 'Never forgets a face', 'Moves without sound', 'Ages gracefully', 'Collects pressed flowers', 'Speaks in metaphors', 'Listens to wind patterns', 'Touches everything with fingertips first', 'Counts stars', 'Hears music in nature', 'Changes eye color with seasons', 'Writes poetry constantly', 'Dances when alone']
       },
       'Dwarf': {
-        positive: ['Loyal', 'Hardy', 'Excellent craftsman'],
-        negative: ['Stubborn', 'Holds grudges'],
-        quirks: ['Judges people by their craftsmanship', 'Always carries ale']
+        positive: ['Loyal', 'Hardy', 'Excellent craftsman', 'Brave', 'Honest', 'Dependable', 'Strong-willed', 'Traditional', 'Protective', 'Generous to friends', 'Master of trades', 'Steadfast', 'Principled', 'Resilient', 'Family-oriented', 'Honorable', 'Practical', 'Determined', 'Hardworking', 'Trustworthy'],
+        negative: ['Stubborn', 'Holds grudges', 'Suspicious of magic', 'Slow to change', 'Hot-tempered', 'Xenophobic', 'Materialistic', 'Inflexible', 'Vengeful', 'Crude manners', 'Overly competitive', 'Distrusts outsiders', 'Set in their ways', 'Conservative', 'Gruff'],
+        quirks: ['Judges people by their craftsmanship', 'Always carries ale', 'Braids beard when thinking', 'Knows stone by touch', 'Snores like an earthquake', 'Never removes armor completely', 'Tests everything with hammer', 'Counts coins obsessively', 'Sharpens weapons daily', 'Names all tools', 'Sleeps sitting up', 'Spits when angry', 'Measures everything twice', 'Keeps detailed genealogy', 'Burns offerings to ancestors']
       },
       'Tiefling': {
-        positive: ['Charismatic', 'Resilient', 'Independent'],
-        negative: ['Distrusted by others', 'Quick to anger'],
-        quirks: ['Horns change color with mood', 'Speaks infernal when frustrated']
+        positive: ['Charismatic', 'Resilient', 'Independent', 'Determined', 'Passionate', 'Self-reliant', 'Strong-willed', 'Adaptable', 'Survivor instinct', 'Magnetic personality', 'Fearless', 'Ambitious', 'Intuitive about people', 'Protective of underdogs', 'Resourceful', 'Confident', 'Emotionally intense', 'Loyal once trust is earned', 'Creative', 'Bold'],
+        negative: ['Distrusted by others', 'Quick to anger', 'Paranoid', 'Bitter', 'Vengeful', 'Isolated', 'Suspicious', 'Temperamental', 'Holds grudges', 'Self-destructive', 'Cynical', 'Defensive', 'Rebellious', 'Impulsive', 'Outcast mentality'],
+        quirks: ['Horns change color with mood', 'Speaks infernal when frustrated', 'Tail betrays emotions', 'Dreams of fire', 'Skin changes temperature with mood', 'Horns itch before storms', 'Enjoys spicy food excessively', 'Shadows move strangely around them', 'Eyes glow when angry', 'Speaks in riddles when upset', 'Collects devil contracts', 'Never feels truly cold', 'Drawn to flames', 'Sleeps with one eye open', 'Makes deals for everything']
       }
     };
 
@@ -233,19 +233,29 @@ export default function CharacterCustomization({ character, onComplete, onCancel
   const getClassTraits = (charClass: string): CharacterTraits => {
     const classTraits: Record<string, CharacterTraits> = {
       'Fighter': {
-        positive: ['Brave', 'Disciplined', 'Protective'],
-        negative: ['Sometimes reckless', 'Trusts strength over diplomacy'],
-        quirks: ['Maintains weapons religiously', 'Respects worthy opponents']
+        positive: ['Brave', 'Disciplined', 'Protective', 'Strategic', 'Loyal', 'Determined', 'Strong', 'Combat expert', 'Reliable', 'Leadership', 'Courageous', 'Tactical', 'Steadfast', 'Honor-bound', 'Team player', 'Resilient'],
+        negative: ['Sometimes reckless', 'Trusts strength over diplomacy', 'Violent solutions first', 'Impatient with talk', 'Stubborn in combat', 'Overly direct', 'Poor at subtlety', 'Trigger-happy', 'Black and white thinking'],
+        quirks: ['Maintains weapons religiously', 'Respects worthy opponents', 'Sleeps in armor', 'Challenges others to contests', 'Practices combat moves constantly', 'Tests new weapons immediately', 'Counts scars as trophies', 'Salutes authority figures', 'Marches instead of walking']
       },
       'Wizard': {
-        positive: ['Intelligent', 'Scholarly', 'Methodical'],
-        negative: ['Physically weak', 'Overthinks problems'],
-        quirks: ['Always reading', 'Collects rare spell components']
+        positive: ['Intelligent', 'Scholarly', 'Methodical', 'Wise', 'Analytical', 'Patient researcher', 'Knowledgeable', 'Strategic thinker', 'Curious', 'Logical', 'Well-educated', 'Thorough', 'Inventive', 'Precise', 'Studious', 'Insightful'],
+        negative: ['Physically weak', 'Overthinks problems', 'Arrogant about knowledge', 'Socially awkward', 'Impatient with ignorance', 'Obsessive', 'Absent-minded', 'Poor practical skills', 'Condescending', 'Fragile ego about intelligence'],
+        quirks: ['Always reading', 'Collects rare spell components', 'Talks to familiar constantly', 'Organizes spells alphabetically', 'Writes everything down', 'Mutters incantations', 'Tower full of books', 'Experiments with everything', 'Names all magical items', 'Sleeps with spellbook']
       },
       'Rogue': {
-        positive: ['Quick-thinking', 'Agile', 'Streetwise'],
-        negative: ['Untrustworthy reputation', 'Selfish tendencies'],
-        quirks: ['Never sits with back to door', 'Fidgets with lockpicks']
+        positive: ['Quick-thinking', 'Agile', 'Streetwise', 'Resourceful', 'Stealthy', 'Opportunistic', 'Independent', 'Adaptable', 'Observant', 'Cunning', 'Survivor', 'Charismatic', 'Lucky', 'Street smart', 'Flexible morals', 'Self-reliant'],
+        negative: ['Untrustworthy reputation', 'Selfish tendencies', 'Paranoid', 'Kleptomaniac', 'Dishonest', 'Cowardly', 'Backstabbing', 'Criminal past', 'Greedy', 'Unreliable', 'Suspicious of everyone'],
+        quirks: ['Never sits with back to door', 'Fidgets with lockpicks', 'Counts exits in every room', 'Pickpockets unconsciously', 'Sleeps with knife under pillow', 'Tests locks habitually', 'Hoards shiny objects', 'Speaks in thieves cant', 'Always has escape plan', 'Distrusts authority']
+      },
+      'Cleric': {
+        positive: ['Faithful', 'Healing', 'Wise', 'Compassionate', 'Devoted', 'Moral guidance', 'Protective', 'Spiritual', 'Inspiring', 'Selfless', 'Pure of heart', 'Peaceful', 'Charitable', 'Patient', 'Forgiving', 'Holy'],
+        negative: ['Preachy', 'Judgmental', 'Naive', 'Overly trusting', 'Rigid morality', 'Sanctimonious', 'Inflexible beliefs', 'Guilt-ridden', 'Zealous', 'Close-minded'],
+        quirks: ['Prays before meals', 'Blesses everyone', 'Carries holy symbol everywhere', 'Quotes scripture constantly', 'Turns undead reflexively', 'Lights candles obsessively', 'Confesses minor sins daily', 'Meditates at dawn', 'Never swears']
+      },
+      'Barbarian': {
+        positive: ['Fierce', 'Strong', 'Brave', 'Protective', 'Passionate', 'Natural warrior', 'Intuitive', 'Loyal to tribe', 'Honest', 'Direct', 'Resilient', 'Wild wisdom', 'Fearless', 'Primal instincts', 'Tough', 'Free spirit'],
+        negative: ['Hot-tempered', 'Uncivilized', 'Violent', 'Impulsive', 'Crude', 'Anti-social', 'Destructive', 'Unpredictable', 'Savage', 'Intimidating'],
+        quirks: ['Rages at minor annoyances', 'Eats with hands', 'Challenges alphas', 'Sleeps under stars', 'Distrusts magic', 'Howls at moon', 'Marks territory', 'Collects teeth/claws', 'Never backs down']
       }
     };
 
@@ -255,20 +265,71 @@ export default function CharacterCustomization({ character, onComplete, onCancel
   const getStatBasedTraits = (stats: Character['stats']): CharacterTraits => {
     const traits: CharacterTraits = { positive: [], negative: [], quirks: [] };
 
-    if (stats.strength >= 14) traits.positive.push('Physically imposing');
-    if (stats.strength <= 8) traits.negative.push('Physically weak');
+    // Strength-based traits
+    if (stats.strength >= 16) {
+      traits.positive.push('Incredibly strong', 'Intimidating presence', 'Natural athlete');
+      traits.quirks.push('Breaks things accidentally', 'Opens jars for everyone');
+    } else if (stats.strength >= 14) {
+      traits.positive.push('Physically imposing', 'Strong grip', 'Good at lifting');
+    } else if (stats.strength <= 8) {
+      traits.negative.push('Physically weak', 'Struggles with heavy objects', 'Gets tired easily');
+      traits.quirks.push('Asks for help opening jars', 'Avoids physical confrontation');
+    }
     
-    if (stats.dexterity >= 14) traits.positive.push('Quick reflexes');
-    if (stats.dexterity <= 8) traits.negative.push('Clumsy');
+    // Dexterity-based traits  
+    if (stats.dexterity >= 16) {
+      traits.positive.push('Lightning reflexes', 'Natural acrobat', 'Perfect balance');
+      traits.quirks.push('Catches things without looking', 'Walks on narrow ledges casually');
+    } else if (stats.dexterity >= 14) {
+      traits.positive.push('Quick reflexes', 'Light on feet', 'Good hand-eye coordination');
+    } else if (stats.dexterity <= 8) {
+      traits.negative.push('Clumsy', 'Trips frequently', 'Poor coordination');
+      traits.quirks.push('Knocks things over', 'Can\'t catch thrown objects', 'Stumbles on flat ground');
+    }
     
-    if (stats.intelligence >= 14) traits.positive.push('Highly intelligent');
-    if (stats.intelligence <= 8) traits.negative.push('Slow to understand');
+    // Constitution-based traits
+    if (stats.constitution >= 16) {
+      traits.positive.push('Iron constitution', 'Never gets sick', 'Incredible endurance');
+      traits.quirks.push('Eats anything without getting sick', 'Stays up all night easily');
+    } else if (stats.constitution >= 14) {
+      traits.positive.push('Hardy', 'Rarely ill', 'Good stamina');
+    } else if (stats.constitution <= 8) {
+      traits.negative.push('Sickly', 'Gets winded easily', 'Weak immune system');
+      traits.quirks.push('Always catching colds', 'Needs lots of rest');
+    }
     
-    if (stats.wisdom >= 14) traits.positive.push('Wise beyond years');
-    if (stats.wisdom <= 8) traits.negative.push('Poor judgment');
+    // Intelligence-based traits
+    if (stats.intelligence >= 16) {
+      traits.positive.push('Genius-level intellect', 'Photographic memory', 'Strategic mastermind');
+      traits.quirks.push('Corrects others constantly', 'Remembers every detail', 'Thinks ten steps ahead');
+    } else if (stats.intelligence >= 14) {
+      traits.positive.push('Highly intelligent', 'Quick learner', 'Analytical mind');
+    } else if (stats.intelligence <= 8) {
+      traits.negative.push('Slow to understand', 'Poor memory', 'Easily confused');
+      traits.quirks.push('Asks for explanations repeatedly', 'Forgets names', 'Takes things literally');
+    }
     
-    if (stats.charisma >= 14) traits.positive.push('Naturally charming');
-    if (stats.charisma <= 8) traits.negative.push('Socially awkward');
+    // Wisdom-based traits
+    if (stats.wisdom >= 16) {
+      traits.positive.push('Sage-like wisdom', 'Perfect intuition', 'Sees through deception');
+      traits.quirks.push('Gives cryptic advice', 'Knows things without explanation', 'Stares into distance thoughtfully');
+    } else if (stats.wisdom >= 14) {
+      traits.positive.push('Wise beyond years', 'Good instincts', 'Perceptive');
+    } else if (stats.wisdom <= 8) {
+      traits.negative.push('Poor judgment', 'Easily deceived', 'Oblivious to danger');
+      traits.quirks.push('Falls for obvious tricks', 'Misses social cues', 'Walks into obvious traps');
+    }
+    
+    // Charisma-based traits
+    if (stats.charisma >= 16) {
+      traits.positive.push('Magnetic personality', 'Natural born leader', 'Incredibly persuasive');
+      traits.quirks.push('Strangers tell them their life story', 'Animals love them', 'Gets discounts everywhere');
+    } else if (stats.charisma >= 14) {
+      traits.positive.push('Naturally charming', 'Good with people', 'Likeable');
+    } else if (stats.charisma <= 8) {
+      traits.negative.push('Socially awkward', 'Off-putting', 'Poor social skills');
+      traits.quirks.push('Says wrong thing at wrong time', 'Makes people uncomfortable', 'Laughs at inappropriate moments');
+    }
 
     return traits;
   };

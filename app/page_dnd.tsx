@@ -559,23 +559,8 @@ export default function DnDPlatform() {
                 ))}
               </div>
 
-              {/* Chat Input */}
-              <div className="flex gap-3 mt-4">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendChat()}
-                  placeholder="Send a message..."
-                  className="flex-1 p-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400 text-sm"
-                />
-                <button
-                  onClick={handleSendChat}
-                  disabled={!chatInput.trim()}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded transition-colors text-sm"
-                >
-                  Send
-                </button>
+              <div className="mt-4 text-xs text-gray-500 text-center">
+                Use the Action Input above to interact with the world and NPCs
               </div>
             </div>
           </div>
@@ -640,6 +625,44 @@ export default function DnDPlatform() {
                 >
                   View Sheet
                 </button>
+                
+                {/* Inventory Section */}
+                <div className="mt-4 space-y-2">
+                  <h4 className="font-medium text-purple-400">🎒 Inventory</h4>
+                  {currentPlayer.character.equipment && currentPlayer.character.equipment.length > 0 ? (
+                    <div className="space-y-1">
+                      {currentPlayer.character.equipment.slice(0, 5).map((item, index) => (
+                        <div key={index} className="flex items-center justify-between text-xs bg-gray-800 p-2 rounded">
+                          <div className="flex items-center space-x-2">
+                            <span className={`w-2 h-2 rounded-full ${
+                              item.type === 'weapon' ? 'bg-red-500' :
+                              item.type === 'armor' ? 'bg-blue-500' :
+                              item.type === 'tool' ? 'bg-yellow-500' :
+                              'bg-purple-500'
+                            }`}></span>
+                            <span className="text-white">{item.name}</span>
+                            {item.equipped && <span className="text-green-400">✓</span>}
+                          </div>
+                          <button
+                            onClick={() => {
+                              setActionInput(`I use my ${item.name}`);
+                            }}
+                            className="text-blue-400 hover:text-blue-300 text-xs"
+                          >
+                            Use
+                          </button>
+                        </div>
+                      ))}
+                      {currentPlayer.character.equipment.length > 5 && (
+                        <div className="text-xs text-gray-500 text-center">
+                          +{currentPlayer.character.equipment.length - 5} more items
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500">No equipment yet</div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="bg-gray-900 p-4 rounded-lg">
