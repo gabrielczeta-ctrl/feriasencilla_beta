@@ -2,6 +2,7 @@ import http from "http";
 import { WebSocketServer } from "ws";
 import Redis from "ioredis";
 import crypto from "crypto";
+import { ClaudeDM } from "./claude-dm.js";
 
 const PORT = process.env.PORT || 8080;
 const REDIS_URL = process.env.REDIS_PUBLIC_URL || process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || "redis://localhost:6379";
@@ -15,6 +16,10 @@ let redisConnected = false;
 
 const hasRedis = REDIS_URL && !REDIS_URL.includes('localhost:6379');
 console.log("🔍 Has Redis:", hasRedis);
+
+// Initialize Claude DM
+const claudeDM = new ClaudeDM();
+console.log("🎭 Claude DM initialized");
 
 if (hasRedis) {
   const redisConfig = {
@@ -215,6 +220,51 @@ async function handleCreateRoom(ws, msg, ip) {
   
   console.log('👥 Player added to room:', { playerId: player.id, roomId, totalPlayers: room.players.length });
   
+  // Generate campaign story with Claude immediately
+  if (roomData.useAIDM) {
+    console.log('🎭 Generating campaign story with Claude...');
+    try {
+      const storyData = await claudeDM.generateCampaignStory(roomData.description, roomData.name);
+      
+      // Update room with generated story
+      room.gameState.story = {
+        currentScene: storyData.location,
+        sceneDescription: storyData.sceneDescription,
+        availableActions: storyData.availableActions,
+        npcs: storyData.npcs.map(npc => ({
+          id: generateId(),
+          name: npc.name,
+          description: npc.description,
+          personality: npc.personality,
+          location: storyData.location
+        })),
+        location: storyData.location,
+        questLog: [{ id: generateId(), title: "Campaign Beginning", description: storyData.questHook, status: "active" }],
+        worldState: { questHook: storyData.questHook }
+      };
+      
+      // Set room to playing phase since story is ready
+      room.gameState.phase = "playing";
+      room.currentScene = storyData.location;
+      
+      console.log('✨ Campaign story generated and room set to playing phase');
+      
+      // Add initial DM message
+      room.gameState.chatLog.push({
+        id: generateId(),
+        playerId: 'system',
+        playerName: 'DM',
+        type: 'system',
+        content: storyData.sceneDescription,
+        timestamp: Date.now()
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to generate campaign story:', error);
+      // Continue with basic setup if story generation fails
+    }
+  }
+  
   // Store in Redis/memory
   await saveRoom(room);
   console.log('💾 Room saved to storage');
@@ -382,7 +432,10 @@ async function handlePlayerAction(ws, msg, ip) {
   if (!room) return;
   
   const player = room.players.find(p => p.id === ws.playerId);
-  if (!player || !player.character) return;
+  if (!player) return;
+  
+  // Allow actions even without character for drop-in gameplay
+  const characterName = player.character?.name || player.name || "Anonymous Adventurer";
   
   const action = sanitizeString(msg.action, 500);
   
@@ -390,9 +443,9 @@ async function handlePlayerAction(ws, msg, ip) {
   const chatMessage = {
     id: generateId(),
     playerId: ws.playerId,
-    playerName: player.character.name,
+    playerName: characterName,
     type: "action",
-    content: `${player.character.name} ${action}`,
+    content: `${characterName} ${action}`,
     timestamp: Date.now()
   };
   
@@ -400,7 +453,8 @@ async function handlePlayerAction(ws, msg, ip) {
   
   // If AI DM is enabled, process the action
   if (room.settings.useAIDM) {
-    const dmResponse = await processAIAction(room, player.character, action);
+    const characterForAction = player.character || { name: characterName };
+    const dmResponse = await processAIAction(room, characterForAction, action);
     
     if (dmResponse) {
       const dmMessage = {
@@ -501,15 +555,62 @@ async function handleChatMessage(ws, msg, ip) {
 
 // Helper functions
 async function processAIAction(room, character, action) {
-  // Simple AI responses for now
-  const responses = [
-    `As ${character.name} ${action}, the world seems to shift around you...`,
-    `Your action catches the attention of nearby NPCs who watch with interest.`,
-    `The atmosphere grows tense as you ${action}. What happens next is uncertain.`,
-    `A gentle breeze carries the scent of adventure as you ${action}.`
-  ];
-  
-  return responses[Math.floor(Math.random() * responses.length)];
+  try {
+    const context = {
+      playerInput: action,
+      currentScene: room.currentScene,
+      players: room.players.map(p => p.character).filter(Boolean),
+      gameState: room.gameState,
+      roomId: room.id,
+      recentActions: room.gameState.chatLog.slice(-5).map(msg => msg.content)
+    };
+
+    console.log(`🎲 Claude processing action for ${character.name}: "${action}"`);
+    const response = await claudeDM.processPlayerAction(context);
+    
+    // Update room state if Claude provided scene updates
+    if (response.sceneUpdate) {
+      if (response.sceneUpdate.location) {
+        room.gameState.story.location = response.sceneUpdate.location;
+        room.currentScene = response.sceneUpdate.location;
+      }
+      if (response.sceneUpdate.description) {
+        room.gameState.story.sceneDescription = response.sceneUpdate.description;
+      }
+      if (response.sceneUpdate.availableActions) {
+        room.gameState.story.availableActions = response.sceneUpdate.availableActions;
+      }
+    }
+
+    // Handle NPC dialogue
+    if (response.npcDialogue) {
+      setTimeout(() => {
+        const npcMessage = {
+          id: generateId(),
+          playerId: 'npc',
+          playerName: response.npcDialogue.npcName,
+          type: 'chat',
+          content: response.npcDialogue.dialogue,
+          timestamp: Date.now()
+        };
+        
+        room.gameState.chatLog.push(npcMessage);
+        saveRoom(room); // Save the updated room
+        
+        broadcast({
+          type: "chat_message",
+          message: npcMessage,
+          timestamp: Date.now()
+        }, room.id);
+      }, 1000); // Slight delay for realism
+    }
+
+    return response.narration || `${character.name} ${action}. The adventure continues...`;
+    
+  } catch (error) {
+    console.error('❌ Claude processing error:', error);
+    return `As ${character.name} ${action}, something interesting happens... (The DM seems distracted for a moment)`;
+  }
 }
 
 function parseDiceExpression(expression) {
