@@ -1,77 +1,147 @@
-# Shader Arena — Multiplayer Visual Battle Game
+# D&D Platform - AI-Powered Tabletop RPG
 
-A real-time multiplayer WebGL2 game with 8 interactive fragment shaders, gamification system, and live battles. Built for 60fps performance with auto-joining multiplayer rooms.
+A revolutionary multiplayer D&D platform with AI Dungeon Master, real-time gameplay, character management, and intelligent storytelling. Built with Next.js, WebSockets, and advanced game mechanics.
 
-## 🎮 Game Features
+## ✨ Features
 
-- **Auto-join multiplayer** - Instantly connects to global battle rooms
-- **Live scoring system** - Earn points and streaks by completing challenges
-- **Dynamic challenges** - Rotate every ~10 seconds (center mouse, draw circles, etc.)
-- **Particle effects** - Visual feedback for achievements
-- **Real-time battles** - See other players' mouse movements and shader changes
-- **8 custom shaders** - From soft gradients to matrix rain effects
+### 🎲 **Core Gameplay**
+- **AI Dungeon Master**: Intelligent storytelling and encounter management
+- **Real-time Multiplayer**: Join campaigns with friends instantly
+- **Character Creation**: Full D&D 5e character sheet with point-buy system
+- **Dice Rolling System**: Comprehensive dice mechanics with automatic calculations
+- **Turn-based Combat**: Initiative tracking and combat management
 
-## 🚀 Quickstart
+### 🎭 **Game Systems**
+- **Dynamic Storytelling**: AI responds to player actions with contextual narration
+- **Quest Management**: Automatic quest tracking and progression
+- **NPC Interactions**: Intelligent dialogue system with personality-driven responses
+- **Combat Encounters**: Balanced encounter generation based on party level
+- **Persistent Campaigns**: Save and resume adventures across sessions
 
-```bash
-npm i
-npm run dev
-```
+### 🌐 **Technical Features**
+- **WebSocket Real-time**: Ultra-low latency for seamless multiplayer
+- **Room Management**: Create public/private campaigns with customizable settings
+- **Redis Persistence**: Reliable data storage with session recovery
+- **Cross-Platform**: Works on desktop and mobile browsers
+- **Professional UI**: Intuitive interface designed for tabletop gaming
 
-Server (Railway deployed):
-```bash
-cd server
-npm i
-npm start
-```
+## 🚀 Quick Start
 
-## 🎯 How to Play
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-1. **App auto-connects** to multiplayer on load
-2. **Complete challenges** shown in the challenge panel
-3. **Earn points** by following challenge objectives (move mouse to center, etc.)
-4. **Build streaks** for higher scores
-5. **Compete** with other players in real-time
+2. **Start the D&D server**:
+   ```bash
+   npm run server
+   ```
 
-## 🕹️ Controls
+3. **Start the development server**:
+   ```bash
+   npm run dev
+   ```
 
-- **1-8**: Switch between shaders instantly
-- **N/P**: Cycle next/previous shader
-- **H**: Hide/show UI
-- **Mouse**: Interactive effects + challenge completion
+4. **Open** [http://localhost:3000](http://localhost:3000)
 
-## 🎨 Shaders
+5. **Create your character** and join an adventure!
 
-1. **Soft Flow** — Gentle noise fields with pleasant colors
-2. **Gradient Glitch** — Smooth color transitions with subtle distortion
-3. **CRT Wave** — Barrel distortion with cosine gradient palette
-4. **Pixel Melt** — Pixelation grid with noise-based temporal smear
-5. **Plasma Storm** — Dynamic plasma effects with color cycling
-6. **Neural Net** — Network visualization with pulsing connections
-7. **Kaleidoscope** — Symmetrical pattern generator
-8. **Matrix Rain** — Classic green digital rain effect
+## 🎮 How to Play
+
+### As a Player
+1. **Enter your name** and connect to the platform
+2. **Join a campaign** from the public lobby or create your own
+3. **Create your character** using the D&D 5e character creation system
+4. **Interact with the world** by typing actions in natural language
+5. **Roll dice** for skill checks, attacks, and saves
+6. **Chat with party members** and coordinate strategies
+
+### As a DM
+- **Enable AI DM mode** for automated storytelling
+- **Manage encounters** and story progression
+- **Control NPCs** and world interactions
+- **Override AI decisions** when needed
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React + TypeScript + Vite + WebGL2
-- **Backend**: Node.js + Socket.IO + Express
-- **Deployment**: Railway (server) + Auto-deployment
-- **Real-time**: WebSocket connections for multiplayer
+- **Frontend**: Next.js 14, React, TypeScript, Framer Motion
+- **Backend**: Node.js WebSocket Server with Redis
+- **AI Engine**: Custom rule-based DM with expansion capabilities
+- **Game Logic**: D&D 5e mechanics implementation
+- **Real-time**: WebSocket with automatic reconnection
+- **Styling**: Tailwind CSS with responsive design
 
-## 🌐 Live Deployment
+## ⚙️ Environment Variables
 
-- **Multiplayer Server**: `wss://feriasencillabeta-production.up.railway.app`
-- **GitHub**: `git@github.com:gabrielczeta-ctrl/feriasencilla_beta.git`
+Create `.env.local`:
 
-## 🎯 Build & Deploy
-
-```bash
-npm run build
-npm run preview
+```env
+NEXT_PUBLIC_WS_URL=ws://localhost:8080/ws
+REDIS_URL=redis://localhost:6379
+# Optional: Add OpenAI API key for enhanced AI DM
+OPENAI_API_KEY=your_openai_key_here
 ```
 
-## ⚡ Requirements
+## 🏗️ Architecture
 
-- WebGL2 support (graceful error message if unavailable)
-- Modern browser (desktop/mobile)
-- Network connection for multiplayer features
+### Game Systems
+- **Room Manager**: Campaign creation and player management
+- **Character System**: Full D&D 5e character implementation
+- **DM Engine**: AI-powered storytelling and encounter management
+- **Dice Engine**: Comprehensive dice rolling with modifiers
+- **Combat System**: Turn-based combat with initiative tracking
+
+### Technical Components
+- **WebSocket Server**: Real-time multiplayer communication
+- **Redis Storage**: Persistent campaign and character data
+- **State Management**: React hooks with WebSocket synchronization
+- **Type Safety**: Full TypeScript implementation with D&D data models
+
+## 🎯 Game Features
+
+### Character Creation
+- **Race & Class Selection**: All core D&D races and classes
+- **Point-Buy Stats**: Standard 27-point ability score system  
+- **Skill Proficiencies**: Choose from all D&D skills
+- **Equipment Management**: Starting gear and inventory
+- **Character Backstory**: Rich character development tools
+
+### Gameplay Mechanics
+- **Natural Language Actions**: Describe actions in plain English
+- **Contextual Responses**: AI adapts to player choices and story
+- **Dynamic Encounters**: Procedurally generated challenges
+- **Social Interactions**: Dialogue with intelligent NPCs
+- **Environmental Interaction**: Detailed world simulation
+
+### Campaign Management
+- **Public/Private Rooms**: Control campaign visibility
+- **Player Limits**: Set maximum party size
+- **AI DM Options**: Toggle automated vs. human DM
+- **Session Persistence**: Campaigns survive disconnections
+- **Chat History**: Full adventure logs
+
+## 🚀 Deployment
+
+Deploy on Vercel, Railway, or Heroku with Redis addon:
+
+1. **Frontend**: Deploy Next.js app to Vercel
+2. **Backend**: Deploy WebSocket server to Railway/Heroku
+3. **Database**: Add Redis addon for persistence
+4. **Configuration**: Set environment variables
+
+## 🔮 Future Enhancements
+
+- **OpenAI Integration**: GPT-powered storytelling
+- **Visual Battle Maps**: Interactive combat grids
+- **Voice Chat**: Integrated voice communication
+- **Homebrew Content**: Custom races, classes, and spells
+- **Campaign Sharing**: Export/import adventures
+- **Mobile App**: Native iOS/Android clients
+
+## 📜 License
+
+MIT License - see LICENSE file for details.
+
+## 🎲 Start Your Adventure
+
+Ready to embark on epic quests? Fire up the platform and let the AI guide you through unforgettable D&D adventures!
