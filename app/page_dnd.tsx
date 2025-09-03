@@ -132,6 +132,10 @@ export default function DnDPlatform() {
     try {
       await createCharacter(character);
       setShowCharacterSheet(false);
+      // After character creation, navigate to playing phase if in a room
+      if (currentRoom && currentRoom.gameState?.phase === 'playing') {
+        setGamePhase('playing');
+      }
     } catch (error) {
       console.error('Failed to create character:', error);
     }

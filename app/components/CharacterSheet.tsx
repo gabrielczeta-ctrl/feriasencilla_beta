@@ -38,6 +38,22 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [remainingPoints, setRemainingPoints] = useState(27); // Point buy system
 
+  // D&D 5e Point Buy System
+  const getPointCost = (score: number): number => {
+    // Standard D&D 5e point buy costs
+    const costs = {
+      8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5,
+      14: 7, 15: 9  // 14 and 15 cost extra
+    };
+    return costs[score as keyof typeof costs] || 0;
+  };
+
+  // Calculate remaining points based on current stats
+  React.useEffect(() => {
+    const totalSpent = Object.values(formData.stats!).reduce((sum, score) => sum + getPointCost(score), 0);
+    setRemainingPoints(27 - totalSpent);
+  }, [formData.stats]);
+
   // Calculate ability modifier
   const getModifier = (score: number): number => {
     return Math.floor((score - 10) / 2);
@@ -51,15 +67,11 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
   // Update ability scores with point buy validation
   const updateAbilityScore = (ability: keyof Character['stats'], value: number) => {
     const currentScore = formData.stats![ability];
-    const pointCost = (score: number) => {
-      if (score <= 13) return score - 8;
-      if (score <= 15) return (score - 8) + (score - 13);
-      return (score - 8) + (score - 13) + (score - 15);
-    };
-
-    const newCost = pointCost(value) - pointCost(currentScore);
+    const currentCost = getPointCost(currentScore);
+    const newCost = getPointCost(value);
+    const costDifference = newCost - currentCost;
     
-    if (remainingPoints - newCost >= 0 && value >= 8 && value <= 15) {
+    if (remainingPoints - costDifference >= 0 && value >= 8 && value <= 15) {
       setFormData(prev => ({
         ...prev,
         stats: {
@@ -67,7 +79,7 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
           [ability]: value
         }
       }));
-      setRemainingPoints(prev => prev - newCost);
+      setRemainingPoints(prev => prev - costDifference);
     }
   };
 
@@ -307,26 +319,43 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
 
       {/* Skills */}
       <div className="mt-6">
-        <h3 className="text-lg font-semibold border-b border-gray-700 pb-2 mb-4">Skills</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {SKILLS.map(skill => (
-            <label key={skill} className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.skills?.[skill] || false}
-                onChange={(e) => setFormData(prev => ({
-                  ...prev,
-                  skills: {
-                    ...prev.skills,
-                    [skill]: e.target.checked
-                  }
-                }))}
-                className="rounded"
-              />
-              <span className="text-sm">{skill}</span>
-            </label>
-          ))}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Skills</h3>
+          <span className="text-sm text-gray-400">
+            {Object.values(formData.skills || {}).filter(Boolean).length}/4 selected
+          </span>
         </div>
+        <p className="text-xs text-gray-500 mb-3">Choose up to 4 skills your character is proficient in</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {SKILLS.map(skill => {
+            const selectedSkills = Object.values(formData.skills || {}).filter(Boolean).length;
+            const isSkillSelected = formData.skills?.[skill] || false;
+            const canSelect = isSkillSelected || selectedSkills < 4;
+            
+            return (
+              <label 
+                key={skill} 
+                className={`flex items-center space-x-2 cursor-pointer ${!canSelect ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSkillSelected}
+                  disabled={!canSelect}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    skills: {
+                      ...prev.skills,
+                      [skill]: e.target.checked
+                    }
+                  }))}
+                  className="rounded border-gray-600 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                />
+                <span className={`text-sm ${canSelect ? 'text-gray-300' : 'text-gray-500'}`}>{skill}</span>
+              </label>
+            );
+          })}
+        </div>
+        {errors.skills && <p className="text-red-400 text-sm mt-2">{errors.skills}</p>}
       </div>
 
       {/* Character Preview */}
