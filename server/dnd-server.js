@@ -659,21 +659,23 @@ function sanitizeRoomForClient(room) {
     id: room.id,
     name: room.name,
     description: room.description,
-    playerCount: room.players.length,
-    maxPlayers: room.maxPlayers,
-    currentScene: room.currentScene,
-    gamePhase: room.gameState.phase,
-    isPublic: room.settings.isPublic,
-    useAIDM: room.settings.useAIDM,
-    createdAt: room.createdAt,
-    lastActivity: room.lastActivity,
+    dmId: room.dmId,
     players: room.players.map(p => ({
       id: p.id,
       name: p.name,
       role: p.role,
       isOnline: p.isOnline,
-      hasCharacter: !!p.character
-    }))
+      lastSeen: p.lastSeen,
+      joinedAt: p.joinedAt,
+      characterId: p.characterId,
+      character: p.character
+    })),
+    maxPlayers: room.maxPlayers,
+    currentScene: room.currentScene,
+    gameState: room.gameState, // Send the full gameState object
+    settings: room.settings, // Send the full settings object
+    createdAt: room.createdAt,
+    lastActivity: room.lastActivity
   };
 }
 
