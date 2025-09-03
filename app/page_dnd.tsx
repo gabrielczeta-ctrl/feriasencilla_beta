@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDnDWebSocket } from './hooks/useDnDWebSocket';
 import CharacterSheet from './components/CharacterSheet';
+import FireShaderBackground from './components/FireShaderBackground';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 
 export default function DnDPlatform() {
@@ -84,9 +85,12 @@ export default function DnDPlatform() {
   };
 
   const handleCreateRoom = async () => {
+    console.log('🏰 Creating room with data:', createRoomData);
     if (createRoomData.roomName.trim()) {
       try {
+        console.log('📤 Sending createRoom request...');
         await createRoom(createRoomData);
+        console.log('✅ Room creation request sent successfully');
         setCreateRoomData({
           roomName: '',
           description: '',
@@ -94,9 +98,16 @@ export default function DnDPlatform() {
           isPublic: true,
           useAIDM: true
         });
+        // Refresh rooms after creation
+        setTimeout(() => {
+          console.log('🔄 Refreshing room list...');
+          refreshRooms();
+        }, 1000);
       } catch (error) {
-        console.error('Failed to create room:', error);
+        console.error('❌ Failed to create room:', error);
       }
+    } else {
+      console.warn('⚠️ Room name is empty, cannot create room');
     }
   };
 
@@ -160,7 +171,8 @@ export default function DnDPlatform() {
   // Login Screen
   if (gamePhase === 'login') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center relative">
+        <FireShaderBackground />
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -209,7 +221,8 @@ export default function DnDPlatform() {
   // Room Lobby
   if (gamePhase === 'lobby') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-4">
+      <div className="min-h-screen text-white p-4 relative">
+        <FireShaderBackground />
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold">🏰 Campaign Lobby</h1>
@@ -329,7 +342,8 @@ export default function DnDPlatform() {
   // Character Creation
   if (gamePhase === 'character_creation') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white p-4">
+      <div className="min-h-screen text-white p-4 relative">
+        <FireShaderBackground />
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -389,7 +403,8 @@ export default function DnDPlatform() {
     const isDM = currentPlayer?.role === 'dm';
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
+      <div className="min-h-screen text-white relative">
+        <FireShaderBackground />
         {/* Header */}
         <div className="bg-black/20 p-4 border-b border-white/10">
           <div className="max-w-7xl mx-auto flex items-center justify-between">

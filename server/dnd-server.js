@@ -175,7 +175,10 @@ async function handlePlayerConnect(ws, msg) {
 }
 
 async function handleCreateRoom(ws, msg, ip) {
+  console.log('🏰 handleCreateRoom called with:', { playerId: ws.playerId, msg });
+  
   if (!ws.playerId) {
+    console.log('❌ Player not connected, rejecting room creation');
     ws.send(JSON.stringify({ type: "error", message: "Must connect first" }));
     return;
   }
@@ -189,8 +192,13 @@ async function handleCreateRoom(ws, msg, ip) {
     useAIDM: msg.useAIDM === true
   };
 
+  console.log('📋 Room data prepared:', roomData);
+
   const roomId = generateRoomId();
+  console.log('🎲 Generated room ID:', roomId);
+  
   const room = createRoom(roomId, roomData);
+  console.log('🏗️ Room created:', { id: room.id, name: room.name, isPublic: room.settings.isPublic });
   
   // Add creator to room
   const player = {
@@ -205,21 +213,29 @@ async function handleCreateRoom(ws, msg, ip) {
   room.players.push(player);
   ws.roomId = roomId;
   
+  console.log('👥 Player added to room:', { playerId: player.id, roomId, totalPlayers: room.players.length });
+  
   // Store in Redis/memory
   await saveRoom(room);
+  console.log('💾 Room saved to storage');
+  
+  const roomResponse = sanitizeRoomForClient(room);
+  console.log('📤 Broadcasting room creation:', { roomId, roomName: room.name, isPublic: room.settings.isPublic });
   
   broadcast({
     type: "room_created",
-    room: sanitizeRoomForClient(room),
+    room: roomResponse,
     timestamp: Date.now()
   }, roomId);
 
   ws.send(JSON.stringify({
     type: "room_joined",
-    room: sanitizeRoomForClient(room),
+    room: roomResponse,
     player,
     timestamp: Date.now()
   }));
+  
+  console.log('✅ Room creation complete for:', roomId);
 }
 
 async function handleJoinRoom(ws, msg) {
@@ -298,10 +314,16 @@ async function handleLeaveRoom(ws, msg) {
 }
 
 async function handleListRooms(ws) {
+  console.log('📋 handleListRooms called by player:', ws.playerId);
   const publicRooms = await getPublicRooms();
+  console.log('🏠 Found public rooms:', publicRooms.length, publicRooms.map(r => ({ id: r.id, name: r.name, isPublic: r.settings.isPublic })));
+  
+  const roomsList = publicRooms.map(sanitizeRoomForClient);
+  console.log('📤 Sending rooms list:', roomsList.length, 'rooms');
+  
   ws.send(JSON.stringify({
     type: "rooms_list",
-    rooms: publicRooms.map(sanitizeRoomForClient),
+    rooms: roomsList,
     timestamp: Date.now()
   }));
 }
@@ -592,31 +614,43 @@ async function loadRoom(roomId) {
 }
 
 async function getPublicRooms() {
+  console.log('🔍 getPublicRooms called, redisConnected:', redisConnected);
+  
   if (redisConnected && redis) {
     try {
       const roomIds = await redis.zrevrange("rooms:active", 0, 19); // Last 20 active rooms
+      console.log('🗂️ Redis room IDs found:', roomIds.length);
       const rooms = [];
       
       for (const roomId of roomIds) {
         const roomData = await redis.get(`room:${roomId}`);
         if (roomData) {
           const room = JSON.parse(roomData);
+          console.log('📖 Loaded room from Redis:', { id: room.id, name: room.name, isPublic: room.settings.isPublic });
           if (room.settings.isPublic) {
             rooms.push(room);
           }
         }
       }
       
+      console.log('🏠 Redis public rooms returned:', rooms.length);
       return rooms;
     } catch (error) {
       console.warn("Redis get public rooms failed:", error.message);
       return [];
     }
   } else {
-    return Array.from(gameRooms.values())
+    console.log('💾 Using in-memory storage, total rooms:', gameRooms.size);
+    const allRooms = Array.from(gameRooms.values());
+    console.log('📂 All in-memory rooms:', allRooms.map(r => ({ id: r.id, name: r.name, isPublic: r.settings.isPublic })));
+    
+    const publicRooms = allRooms
       .filter(room => room.settings.isPublic)
       .sort((a, b) => b.lastActivity - a.lastActivity)
       .slice(0, 20);
+      
+    console.log('🏠 In-memory public rooms returned:', publicRooms.length);
+    return publicRooms;
   }
 }
 
