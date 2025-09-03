@@ -1,5 +1,5 @@
 {
-  "name": "partywall-ws-server",
+  "name": "dnd-platform-server",
   "private": true,
   "type": "module",
   "engines": { "node": ">=18" },
@@ -8,7 +8,7 @@
     "ws": "^8.17.0"
   },
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node dnd-server.js",
+    "dev": "node dnd-server.js"
   }
 }
