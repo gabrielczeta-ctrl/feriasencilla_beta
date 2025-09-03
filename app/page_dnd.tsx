@@ -315,14 +315,14 @@ export default function DnDPlatform() {
                             <p className="text-gray-400 text-sm mt-1">{room.description}</p>
                           )}
                           <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
-                            <span>Players: {room.players.length}/{room.maxPlayers}</span>
+                            <span>Players: {room.players?.length || 0}/{room.maxPlayers || 0}</span>
                             <span>Phase: {room.gameState?.phase || 'Waiting'}</span>
-                            {room.settings.useAIDM && <span className="text-purple-400">🤖 AI DM</span>}
+                            {room.settings?.useAIDM && <span className="text-purple-400">🤖 AI DM</span>}
                           </div>
                         </div>
                         <button
                           onClick={() => handleJoinRoom(room.id)}
-                          disabled={room.players.length >= room.maxPlayers}
+                          disabled={(room.players?.length || 0) >= (room.maxPlayers || 0)}
                           className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
                         >
                           Join
