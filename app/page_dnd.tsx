@@ -12,6 +12,7 @@ export default function DnDPlatform() {
   const [playerName, setPlayerName] = useState('');
   const [gamePhase, setGamePhase] = useState<'login' | 'lobby' | 'character_creation' | 'character_customization' | 'playing'>('login');
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
+  const [showCharacterProfile, setShowCharacterProfile] = useState(false);
   const [createdCharacter, setCreatedCharacter] = useState<Character | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [actionInput, setActionInput] = useState('');
@@ -619,12 +620,20 @@ export default function DnDPlatform() {
                     AC: {currentPlayer.character.armorClass}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowCharacterSheet(true)}
-                  className="w-full mt-3 p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-sm"
-                >
-                  View Sheet
-                </button>
+                <div className="flex gap-2 mt-3">
+                  <button
+                    onClick={() => setShowCharacterProfile(true)}
+                    className="flex-1 p-2 bg-purple-600 hover:bg-purple-700 rounded transition-colors text-sm font-medium"
+                  >
+                    👤 Profile
+                  </button>
+                  <button
+                    onClick={() => setShowCharacterSheet(true)}
+                    className="flex-1 p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-sm"
+                  >
+                    📄 Edit Sheet
+                  </button>
+                </div>
                 
                 {/* Inventory Section */}
                 <div className="mt-4 space-y-2">
@@ -781,6 +790,130 @@ export default function DnDPlatform() {
                   onCancel={() => setShowCharacterSheet(false)}
                   isEditing={true}
                 />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Character Profile Modal */}
+        <AnimatePresence>
+          {showCharacterProfile && currentPlayer?.character && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              onClick={() => setShowCharacterProfile(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.9 }}
+                onClick={(e) => e.stopPropagation()}
+                className="max-w-2xl w-full bg-gray-900 rounded-lg p-6"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-white">👤 Character Profile</h2>
+                  <button
+                    onClick={() => setShowCharacterProfile(false)}
+                    className="text-gray-400 hover:text-white text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                <div className="space-y-6 text-white">
+                  {/* Character Header */}
+                  <div className="text-center pb-4 border-b border-gray-700">
+                    <h3 className="text-3xl font-bold text-purple-400">{currentPlayer.character.name}</h3>
+                    <p className="text-lg text-gray-300 mt-2">
+                      Level {currentPlayer.character.level} {currentPlayer.character.race} {currentPlayer.character.class}
+                    </p>
+                  </div>
+                  
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gray-800 p-3 rounded text-center">
+                      <div className="text-red-400 font-bold text-xl">
+                        {currentPlayer.character.hitPoints.current}/{currentPlayer.character.hitPoints.maximum}
+                      </div>
+                      <div className="text-xs text-gray-400">Hit Points</div>
+                    </div>
+                    <div className="bg-gray-800 p-3 rounded text-center">
+                      <div className="text-blue-400 font-bold text-xl">{currentPlayer.character.armorClass}</div>
+                      <div className="text-xs text-gray-400">Armor Class</div>
+                    </div>
+                    <div className="bg-gray-800 p-3 rounded text-center">
+                      <div className="text-green-400 font-bold text-xl">+{currentPlayer.character.proficiencyBonus}</div>
+                      <div className="text-xs text-gray-400">Proficiency</div>
+                    </div>
+                    <div className="bg-gray-800 p-3 rounded text-center">
+                      <div className="text-purple-400 font-bold text-xl">{currentPlayer.character.equipment?.length || 0}</div>
+                      <div className="text-xs text-gray-400">Items</div>
+                    </div>
+                  </div>
+                  
+                  {/* Ability Scores */}
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3 text-yellow-400">Ability Scores</h4>
+                    <div className="grid grid-cols-3 gap-3">
+                      {Object.entries(currentPlayer.character.stats).map(([stat, value]) => (
+                        <div key={stat} className="bg-gray-800 p-2 rounded text-center">
+                          <div className="text-white font-bold">{value}</div>
+                          <div className="text-xs text-gray-400 capitalize">{stat.slice(0,3)}</div>
+                          <div className="text-xs text-gray-500">
+                            {Math.floor((value - 10) / 2) >= 0 ? '+' : ''}{Math.floor((value - 10) / 2)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Backstory */}
+                  {currentPlayer.character.backstory && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-3 text-yellow-400">Backstory</h4>
+                      <div className="bg-gray-800 p-4 rounded">
+                        <p className="text-gray-300 text-sm leading-relaxed">{currentPlayer.character.backstory}</p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Skills */}
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3 text-yellow-400">Proficient Skills</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(currentPlayer.character.skills || {})
+                        .filter(([_, proficient]) => proficient)
+                        .map(([skill]) => (
+                          <span key={skill} className="bg-blue-600 px-3 py-1 rounded-full text-xs">{skill}</span>
+                        ))}
+                    </div>
+                  </div>
+                  
+                  {/* Equipment */}
+                  {currentPlayer.character.equipment && currentPlayer.character.equipment.length > 0 && (
+                    <div>
+                      <h4 className="text-lg font-semibold mb-3 text-yellow-400">Equipment</h4>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {currentPlayer.character.equipment.map((item, index) => (
+                          <div key={index} className="flex items-center justify-between bg-gray-800 p-2 rounded text-sm">
+                            <div className="flex items-center space-x-2">
+                              <span className={`w-2 h-2 rounded-full ${
+                                item.type === 'weapon' ? 'bg-red-500' :
+                                item.type === 'armor' ? 'bg-blue-500' :
+                                item.type === 'tool' ? 'bg-yellow-500' :
+                                'bg-purple-500'
+                              }`}></span>
+                              <span>{item.name}</span>
+                            </div>
+                            {item.equipped && <span className="text-green-400 text-xs">Equipped</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </motion.div>
             </motion.div>
           )}

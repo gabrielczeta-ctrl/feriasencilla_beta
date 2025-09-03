@@ -433,7 +433,8 @@ export default function CharacterCustomization({ character, onComplete, onCancel
 
   return (
     <div className="min-h-screen text-white p-4 relative">
-      <div className="max-w-6xl mx-auto bg-gray-900 p-6 rounded-lg max-h-screen overflow-y-auto">
+      <div className="w-full max-w-7xl mx-auto bg-gray-900 p-4 sm:p-6 rounded-lg"
+           style={{ maxHeight: 'none' }}>
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold">✨ Character Customization</h2>
           <div className="flex gap-4">

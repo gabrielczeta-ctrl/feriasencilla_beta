@@ -137,7 +137,8 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
   };
 
   return (
-    <div className="max-w-5xl mx-auto bg-gray-900 text-white p-6 rounded-lg max-h-screen overflow-y-auto">
+    <div className="w-full max-w-6xl mx-auto bg-gray-900 text-white p-4 sm:p-6 rounded-lg min-h-screen"
+         style={{ maxHeight: 'none' }}>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">
           {isEditing ? 'Edit Character' : 'Create Character'}
@@ -160,7 +161,7 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Basic Information */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold border-b border-gray-700 pb-2">Basic Information</h3>

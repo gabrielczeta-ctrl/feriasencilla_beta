@@ -52,6 +52,7 @@ if (hasRedis) {
 const gameRooms = new Map();
 const playerSessions = new Map(); // playerId -> { roomId, ws, lastSeen }
 const npcInteractionTimers = new Map(); // roomId -> timer
+const dmUpdateTimers = new Map(); // roomId -> timer
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
@@ -512,6 +513,9 @@ async function handlePlayerAction(ws, msg, ip) {
   
   // Schedule timed NPC interactions after player action
   scheduleNPCInteraction(room.id);
+  
+  // Schedule DM story updates
+  scheduleDMUpdate(room.id);
 }
 
 async function handleDiceRoll(ws, msg, ip) {
@@ -1093,6 +1097,102 @@ function getNPCAction(npc) {
     "nods approvingly at the proceedings"
   ];
   return actions[Math.floor(Math.random() * actions.length)];
+}
+
+// Schedule DM story updates
+function scheduleDMUpdate(roomId) {
+  // Clear existing timer for this room
+  if (dmUpdateTimers.has(roomId)) {
+    clearTimeout(dmUpdateTimers.get(roomId));
+  }
+  
+  // Schedule DM update in 2-4 minutes
+  const delay = Math.random() * 120000 + 120000; // 2-4 minutes
+  
+  const timer = setTimeout(async () => {
+    try {
+      const room = await loadRoom(roomId);
+      if (!room || room.gameState.phase !== 'playing') return;
+      
+      // Generate DM story update
+      const dmUpdate = await generateDMUpdate(room);
+      if (dmUpdate) {
+        // Add DM message to chat
+        const dmMessage = {
+          id: generateId(),
+          playerId: 'dm',
+          playerName: 'DM',
+          type: 'system',
+          content: dmUpdate.narration,
+          timestamp: Date.now()
+        };
+        
+        room.gameState.chatLog.push(dmMessage);
+        room.lastActivity = Date.now();
+        
+        // Update scene if provided
+        if (dmUpdate.sceneUpdate) {
+          if (dmUpdate.sceneUpdate.description) {
+            room.gameState.story.sceneDescription = dmUpdate.sceneUpdate.description;
+          }
+          if (dmUpdate.sceneUpdate.availableActions) {
+            room.gameState.story.availableActions = dmUpdate.sceneUpdate.availableActions;
+          }
+        }
+        
+        await saveRoom(room);
+        
+        // Broadcast DM update
+        broadcast({
+          type: 'chat_message',
+          message: dmMessage,
+          timestamp: Date.now()
+        }, roomId);
+        
+        console.log(`📜 DM story update in room ${roomId}: ${dmUpdate.narration.slice(0, 50)}...`);
+        
+        // Schedule another update
+        scheduleDMUpdate(roomId);
+      }
+    } catch (error) {
+      console.error('❌ Error in DM update:', error);
+    }
+  }, delay);
+  
+  dmUpdateTimers.set(roomId, timer);
+}
+
+// Generate DM story updates
+async function generateDMUpdate(room) {
+  try {
+    const storyUpdates = [
+      {
+        narration: "The atmosphere grows tense as dark clouds gather outside. Something feels different about this place...",
+        sceneUpdate: { availableActions: ["Investigate the tension", "Look outside", "Ask locals about the change", "Prepare for trouble"] }
+      },
+      {
+        narration: "A distant sound echoes through the area - perhaps opportunity, perhaps danger approaching.",
+        sceneUpdate: { availableActions: ["Listen carefully", "Investigate the sound", "Alert your companions", "Hide and observe"] }
+      },
+      {
+        narration: "The local patrons seem to be whispering about something important. Their hushed conversations might hold valuable information.",
+        sceneUpdate: { availableActions: ["Eavesdrop on conversations", "Approach the group", "Buy drinks to loosen tongues", "Ask the bartender"] }
+      },
+      {
+        narration: "Time passes, and the world continues to turn. New opportunities and challenges await those bold enough to seek them.",
+        sceneUpdate: { availableActions: ["Explore the surroundings", "Seek out adventure", "Talk to locals", "Plan your next move"] }
+      },
+      {
+        narration: "A sense of anticipation fills the air. Events are in motion, and choices made now could have lasting consequences.",
+        sceneUpdate: { availableActions: ["Make a bold move", "Proceed cautiously", "Gather more information", "Rally your companions"] }
+      }
+    ];
+    
+    return storyUpdates[Math.floor(Math.random() * storyUpdates.length)];
+  } catch (error) {
+    console.error('❌ DM update generation failed:', error);
+    return null;
+  }
 }
 
 // Redis pubsub → fan out to WS clients (if Redis connected)
