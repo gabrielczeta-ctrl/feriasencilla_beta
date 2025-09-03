@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Character } from '../types/dnd';
+import { Character, Equipment } from '../types/dnd';
 
 interface CharacterCustomizationProps {
   character: Character;
@@ -309,12 +309,65 @@ export default function CharacterCustomization({ character, onComplete, onCancel
   };
 
   const handleComplete = () => {
+    // Convert selected equipment strings to Equipment objects
+    const equipmentObjects: Equipment[] = selectedEquipment.map((equipmentName, index) => ({
+      id: `equipment_${Date.now()}_${index}`,
+      name: equipmentName,
+      type: getEquipmentType(equipmentName),
+      description: getEquipmentDescription(equipmentName),
+      damage: getEquipmentDamage(equipmentName),
+      properties: [],
+      equipped: false,
+      quantity: 1
+    }));
+
     const customizedCharacter: Character = {
       ...character,
-      equipment: selectedEquipment,
+      equipment: equipmentObjects,
       // Add traits to character object (we might need to extend the Character interface)
     };
     onComplete(customizedCharacter);
+  };
+
+  const getEquipmentType = (name: string): 'weapon' | 'armor' | 'tool' | 'consumable' | 'treasure' => {
+    const weaponKeywords = ['sword', 'dagger', 'bow', 'crossbow', 'axe', 'hammer', 'staff', 'wand', 'blade', 'knife'];
+    const armorKeywords = ['armor', 'shield', 'helmet', 'cloak', 'robe', 'chainmail', 'leather'];
+    const toolKeywords = ['kit', 'tools', 'rope', 'torch', 'lantern', 'bedroll', 'pack', 'pouch', 'book', 'scroll'];
+    
+    const lowerName = name.toLowerCase();
+    
+    if (weaponKeywords.some(keyword => lowerName.includes(keyword))) return 'weapon';
+    if (armorKeywords.some(keyword => lowerName.includes(keyword))) return 'armor';
+    if (toolKeywords.some(keyword => lowerName.includes(keyword))) return 'tool';
+    
+    return 'treasure'; // Default for miscellaneous items
+  };
+
+  const getEquipmentDescription = (name: string): string => {
+    const descriptions: Record<string, string> = {
+      'Infernal Dagger': 'A wickedly sharp blade that seems to whisper dark secrets.',
+      'Light Crossbow': 'A compact ranged weapon favored by rogues and hunters.',
+      'Leather Armor': 'Flexible protection made from hardened leather.',
+      'Thieves\' Tools': 'A set of fine tools for picking locks and disarming traps.',
+      'Forgery Kit': 'Supplies needed to create convincing fake documents.',
+      'Dragonborn Scale Polish': 'A special compound for maintaining dragonborn scales.',
+      'Flame Breath Mint': 'Helps freshen breath after using flame breath.',
+      'Ancestral Medallion': 'A family heirloom passed down through generations.'
+    };
+    
+    return descriptions[name] || `A useful piece of equipment: ${name}`;
+  };
+
+  const getEquipmentDamage = (name: string): string | undefined => {
+    const damages: Record<string, string> = {
+      'Infernal Dagger': '1d4 + DEX',
+      'Light Crossbow': '1d8',
+      'Shortsword': '1d6 + STR/DEX',
+      'Rapier': '1d8 + DEX',
+      'Longbow': '1d8 + DEX'
+    };
+    
+    return damages[name];
   };
 
   return (

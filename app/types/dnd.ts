@@ -189,6 +189,8 @@ export interface DiceRoll {
   description?: string;
   advantage?: boolean;
   disadvantage?: boolean;
+  success?: boolean; // Whether the roll succeeded against a DC
+  difficulty?: number; // The DC the roll was made against
   timestamp: number;
   private?: boolean; // DM only rolls
 }
