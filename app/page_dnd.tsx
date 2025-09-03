@@ -67,9 +67,10 @@ export default function DnDPlatform() {
   useEffect(() => {
     if (currentRoom) {
       const currentPlayer = currentRoom.players.find(p => p.id === playerId);
-      if (currentPlayer && !currentPlayer.character && currentRoom.gameState?.phase === 'character_creation') {
+      if (currentPlayer && !currentPlayer.character) {
+        // Player needs to create character regardless of room phase
         setGamePhase('character_creation');
-      } else if (currentRoom.gameState?.phase === 'playing') {
+      } else if (currentPlayer && currentPlayer.character && currentRoom.gameState?.phase === 'playing') {
         setGamePhase('playing');
       }
     } else if (status === 'connected') {
@@ -501,7 +502,7 @@ export default function DnDPlatform() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Character Info */}
-            {currentPlayer?.character && (
+            {currentPlayer?.character ? (
               <div className="bg-gray-900 p-4 rounded-lg">
                 <h3 className="font-semibold mb-3">Your Character</h3>
                 <div className="space-y-2 text-sm">
@@ -522,6 +523,22 @@ export default function DnDPlatform() {
                 >
                   View Sheet
                 </button>
+              </div>
+            ) : (
+              <div className="bg-gray-900 p-4 rounded-lg">
+                <h3 className="font-semibold mb-3">⚔️ Character</h3>
+                <p className="text-gray-400 text-sm mb-4">
+                  Playing as: <span className="text-white font-medium">{currentPlayer?.name || "Anonymous Adventurer"}</span>
+                </p>
+                <button
+                  onClick={() => setGamePhase('character_creation')}
+                  className="w-full p-3 bg-blue-600 hover:bg-blue-700 rounded transition-colors text-white font-medium"
+                >
+                  ⚔️ Create Character Sheet
+                </button>
+                <p className="text-xs text-gray-500 mt-2">
+                  Optional: Create a full D&D character with stats, backstory, and abilities
+                </p>
               </div>
             )}
 

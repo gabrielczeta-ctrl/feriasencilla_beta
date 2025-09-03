@@ -571,11 +571,33 @@ async function processAIAction(room, character, action, actingPlayer) {
     
     // Handle automatic dice rolling if Claude requests it
     let diceResults = null;
+    let finalResponse = response;
+    
     if (response.diceRoll?.required) {
       console.log(`🎲 Rolling ${response.diceRoll.dice} for ${response.diceRoll.type} (DC ${response.diceRoll.difficulty})`);
       
       diceResults = rollDiceExpression(response.diceRoll.dice);
       const success = diceResults.total >= response.diceRoll.difficulty;
+      
+      // Send dice results back to Claude for better narrative integration
+      try {
+        const diceContext = {
+          ...context,
+          diceResult: {
+            roll: diceResults.total,
+            success: success,
+            difficulty: response.diceRoll.difficulty,
+            type: response.diceRoll.type
+          },
+          originalAction: action,
+          originalNarration: response.narration
+        };
+        
+        console.log(`🎭 Claude incorporating dice result: ${diceResults.total} (${success ? 'SUCCESS' : 'FAILURE'})`);
+        finalResponse = await claudeDM.incorporateDiceResult(diceContext);
+      } catch (error) {
+        console.warn('⚠️ Failed to incorporate dice result, using original response');
+      }
       
       // Add dice roll to game state
       const diceRoll = {
@@ -603,35 +625,35 @@ async function processAIAction(room, character, action, actingPlayer) {
       console.log(`🎲 ${character.name} rolled ${diceResults.total} vs DC ${response.diceRoll.difficulty}: ${success ? 'SUCCESS' : 'FAILURE'}`);
     }
     
-    // Update room state if Claude provided scene updates
-    if (response.sceneUpdate) {
-      if (response.sceneUpdate.location && response.sceneUpdate.location !== room.gameState.story.location) {
-        room.gameState.story.location = response.sceneUpdate.location;
-        room.currentScene = response.sceneUpdate.location;
-        console.log(`🌍 Scene changed to: ${response.sceneUpdate.location}`);
+    // Update room state if Claude provided scene updates (use finalResponse)
+    if (finalResponse.sceneUpdate) {
+      if (finalResponse.sceneUpdate.location && finalResponse.sceneUpdate.location !== room.gameState.story.location) {
+        room.gameState.story.location = finalResponse.sceneUpdate.location;
+        room.currentScene = finalResponse.sceneUpdate.location;
+        console.log(`🌍 Scene changed to: ${finalResponse.sceneUpdate.location}`);
       }
-      if (response.sceneUpdate.description) {
-        room.gameState.story.sceneDescription = response.sceneUpdate.description;
+      if (finalResponse.sceneUpdate.description) {
+        room.gameState.story.sceneDescription = finalResponse.sceneUpdate.description;
       }
-      if (response.sceneUpdate.availableActions) {
-        room.gameState.story.availableActions = response.sceneUpdate.availableActions;
+      if (finalResponse.sceneUpdate.availableActions) {
+        room.gameState.story.availableActions = finalResponse.sceneUpdate.availableActions;
       }
       
       // Update NPCs if there are new developments
-      if (response.sceneUpdate.newDevelopment) {
-        console.log(`📖 Story development: ${response.sceneUpdate.newDevelopment}`);
+      if (finalResponse.sceneUpdate.newDevelopment) {
+        console.log(`📖 Story development: ${finalResponse.sceneUpdate.newDevelopment}`);
       }
     }
 
-    // Handle NPC responses (updated structure)
-    if (response.npcResponse) {
+    // Handle NPC responses (updated structure) - use finalResponse
+    if (finalResponse.npcResponse) {
       setTimeout(() => {
         const npcMessage = {
           id: generateId(),
           playerId: 'npc',
-          playerName: response.npcResponse.npcName,
+          playerName: finalResponse.npcResponse.npcName,
           type: 'chat',
-          content: response.npcResponse.dialogue,
+          content: finalResponse.npcResponse.dialogue,
           timestamp: Date.now()
         };
         
@@ -644,40 +666,31 @@ async function processAIAction(room, character, action, actingPlayer) {
           timestamp: Date.now()
         }, room.id);
         
-        console.log(`💬 NPC ${response.npcResponse.npcName}: "${response.npcResponse.dialogue}"`);
+        console.log(`💬 NPC ${finalResponse.npcResponse.npcName}: "${finalResponse.npcResponse.dialogue}"`);
       }, 1500); // Delay for realism
     }
 
     // Handle consequences
-    if (response.consequences) {
-      if (response.consequences.immediate) {
-        console.log(`⚡ Immediate consequence: ${response.consequences.immediate}`);
+    if (finalResponse.consequences) {
+      if (finalResponse.consequences.immediate) {
+        console.log(`⚡ Immediate consequence: ${finalResponse.consequences.immediate}`);
       }
-      if (response.consequences.ongoing) {
-        console.log(`📝 Ongoing consequence: ${response.consequences.ongoing}`);
+      if (finalResponse.consequences.ongoing) {
+        console.log(`📝 Ongoing consequence: ${finalResponse.consequences.ongoing}`);
         // Store ongoing consequences in world state
         if (!room.gameState.story.worldState.consequences) {
           room.gameState.story.worldState.consequences = [];
         }
         room.gameState.story.worldState.consequences.push({
           action: action,
-          consequence: response.consequences.ongoing,
+          consequence: finalResponse.consequences.ongoing,
           timestamp: Date.now()
         });
       }
     }
 
-    // Build final narration including dice results
-    let finalNarration = response.narration || `${character.name} ${action}. The adventure continues...`;
-    
-    if (diceResults) {
-      const diceResultText = diceResults.total >= response.diceRoll.difficulty ? 
-        `(Rolled ${diceResults.total} - Success!)` : 
-        `(Rolled ${diceResults.total} - Failed!)`;
-      finalNarration += ` ${diceResultText}`;
-    }
-    
-    return finalNarration;
+    // Use the final response narration (which should already include dice results)
+    return finalResponse.narration || `${character.name} ${action}. The adventure continues...`;
     
   } catch (error) {
     console.error('❌ Claude processing error:', error);

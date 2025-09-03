@@ -210,6 +210,74 @@ HP: ${character.hitPoints?.current || 10}/${character.hitPoints?.maximum || 10}
 Background: ${character.backstory || 'Unknown'}`;
   }
 
+  // Incorporate dice results into the narrative
+  async incorporateDiceResult(context) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return context.originalNarration + ` (Rolled ${context.diceResult.roll} - ${context.diceResult.success ? 'Success!' : 'Failed!'})`;
+    }
+
+    try {
+      const { diceResult, originalAction, originalNarration, playerInput } = context;
+      
+      const prompt = `You are a D&D Dungeon Master. A player attempted an action that required a dice roll.
+
+ORIGINAL ACTION: "${originalAction}"
+DICE ROLL RESULT: ${diceResult.roll} vs DC ${diceResult.difficulty} (${diceResult.type}) - ${diceResult.success ? 'SUCCESS' : 'FAILURE'}
+ORIGINAL NARRATION: "${originalNarration}"
+
+Rewrite the narration to seamlessly incorporate the dice result. The success/failure should determine the outcome naturally.
+
+Rules:
+- If SUCCESS: The action succeeds, perhaps even better than expected
+- If FAILURE: The action fails, with interesting consequences or complications
+- Make the dice roll feel natural, not mechanical
+- Keep the same tone and style as the original narration
+- Don't mention dice numbers explicitly - focus on the outcome
+
+Response format (JSON):
+{
+  "narration": "Rewritten narrative that incorporates the success/failure naturally",
+  "consequences": {
+    "immediate": "What happens right now due to success/failure",
+    "ongoing": "Lasting effects if any"
+  }
+}`;
+
+      const response = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 300,
+        temperature: 0.7,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const content = response.content[0].text;
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        return {
+          ...context,
+          narration: result.narration,
+          consequences: result.consequences
+        };
+      } else {
+        throw new Error('Invalid JSON response from Claude');
+      }
+
+    } catch (error) {
+      console.error('❌ Claude dice incorporation error:', error.message);
+      // Fallback: append dice result to original narration
+      const resultText = context.diceResult.success ? 
+        'The attempt succeeds admirably!' : 
+        'Unfortunately, the attempt doesn\'t go as planned.';
+      
+      return {
+        ...context,
+        narration: `${context.originalNarration} ${resultText}`
+      };
+    }
+  }
+
   // Fallback responses when Claude API is unavailable
   getFallbackCampaignStory(description, roomName) {
     const scenarios = [
