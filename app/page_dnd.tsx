@@ -625,17 +625,17 @@ export default function DnDPlatform() {
   if (state.phase === 'playing') {
     return (
       <div className="min-h-screen text-white relative overflow-auto">
-        <FireShaderBackground 
-          setting="tavern"
-          location="The Eternal Tavern"
-        />
-        
-        {/* Game HUD */}
-        <GameHUD
-          onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
-          onUpdateCharacterHP={updateCharacterHP}
-        />
-        {/* Global Server Timer */}
+          <FireShaderBackground 
+            setting="tavern"
+            location="The Eternal Tavern"
+          />
+          
+          {/* Game HUD */}
+          <GameHUD
+            onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
+            onUpdateCharacterHP={updateCharacterHP}
+          />
+          {/* Global Server Timer */}
         <div className="max-w-7xl mx-auto p-4">
           <DMUpdateTimer
             turnPhase={globalServerState.turnPhase}
@@ -1476,6 +1476,5 @@ export default function DnDPlatform() {
     );
   }
 
-  }
   return null;
 }
