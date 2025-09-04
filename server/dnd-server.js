@@ -300,12 +300,26 @@ async function handlePlayerConnect(ws, msg) {
   ws.playerId = playerId;
   playerSessions.set(playerId, { ws, lastSeen: Date.now() });
   
+  // Retrieve user's character if authenticated
+  let userCharacter = ws.userCharacter; // From login
+  if (ws.username && !userCharacter && userManager) {
+    console.log(`🔍 Retrieving stored character for user: ${ws.username}`);
+    const characterResult = await userManager.getUserCharacter(ws.username);
+    if (characterResult.success && characterResult.character) {
+      userCharacter = characterResult.character;
+      ws.userCharacter = userCharacter; // Cache for this session
+      console.log(`✅ Character retrieved for ${ws.username}:`, userCharacter.name);
+    } else {
+      console.log(`ℹ️ No stored character found for ${ws.username}`);
+    }
+  }
+  
   // Add player to global game manager
   if (globalGameManager) {
     const welcomeData = globalGameManager.addPlayer(playerId, {
       id: playerId,
       name: playerName,
-      character: ws.userCharacter,
+      character: userCharacter,
       isAuthenticated: !!ws.username
     });
     
@@ -313,7 +327,7 @@ async function handlePlayerConnect(ws, msg) {
       type: "player_connected",
       playerId,
       playerName,
-      character: ws.userCharacter || null,
+      character: userCharacter || null,
       isAuthenticated: !!ws.username,
       globalRoom: welcomeData,
       timestamp: Date.now()
@@ -326,7 +340,7 @@ async function handlePlayerConnect(ws, msg) {
     type: "player_connected",
     playerId,
     playerName,
-    character: ws.userCharacter || null,
+    character: userCharacter || null,
     isAuthenticated: !!ws.username,
     timestamp: Date.now()
   }));
