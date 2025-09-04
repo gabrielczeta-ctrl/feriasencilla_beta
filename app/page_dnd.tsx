@@ -191,10 +191,8 @@ export default function DnDPlatform() {
       await createCharacter(finalCharacter);
       setCreatedCharacter(null);
       dispatch({ type: 'SET_CHARACTER', payload: finalCharacter });
-      // After customization, navigate to playing phase if in a room
-      if (currentRoom && currentRoom.gameState?.phase === 'playing') {
-        dispatch({ type: 'SET_PHASE', payload: 'playing' });
-      }
+      // After customization, navigate to playing phase
+      dispatch({ type: 'SET_PHASE', payload: 'playing' });
     } catch (error) {
       console.error('Failed to create character:', error);
     }

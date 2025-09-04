@@ -34,6 +34,8 @@ export interface Equipment {
   id: string;
   name: string;
   type: 'weapon' | 'armor' | 'tool' | 'consumable' | 'treasure';
+  slot?: 'mainhand' | 'offhand' | 'inventory'; // equipment slot
+  handedness?: 'one-handed' | 'two-handed' | 'none'; // for weapons/tools
   description?: string;
   damage?: string; // e.g., "1d8 + STR"
   properties?: string[];

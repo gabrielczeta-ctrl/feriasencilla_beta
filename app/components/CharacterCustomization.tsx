@@ -34,7 +34,11 @@ export default function CharacterCustomization({ character, onComplete, onCancel
     negative: [],
     quirks: []
   });
-  const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
+  const [selectedEquipment, setSelectedEquipment] = useState<{
+    mainhand: string | null;
+    offhand: string | null;
+    inventory: string[];
+  }>({ mainhand: null, offhand: null, inventory: [] });
   const [selectedTraits, setSelectedTraits] = useState({
     positive: [] as string[],
     negative: [] as string[],
@@ -353,11 +357,60 @@ export default function CharacterCustomization({ character, onComplete, onCancel
   };
 
   const handleEquipmentToggle = (item: string) => {
-    setSelectedEquipment(prev => 
-      prev.includes(item) 
-        ? prev.filter(i => i !== item)
-        : [...prev, item]
-    );
+    const itemType = getEquipmentHandedness(item);
+    
+    setSelectedEquipment(prev => {
+      // For weapons/tools that can be equipped in hands
+      if (itemType === 'one-handed') {
+        // If already equipped, remove it
+        if (prev.mainhand === item) {
+          return { ...prev, mainhand: null };
+        } else if (prev.offhand === item) {
+          return { ...prev, offhand: null };
+        }
+        // Try to equip in mainhand first, then offhand
+        else if (!prev.mainhand) {
+          return { ...prev, mainhand: item };
+        } else if (!prev.offhand) {
+          return { ...prev, offhand: item };
+        } else {
+          // Both hands full, replace mainhand
+          return { ...prev, mainhand: item };
+        }
+      } else if (itemType === 'two-handed') {
+        // If already equipped, remove it
+        if (prev.mainhand === item) {
+          return { ...prev, mainhand: null };
+        }
+        // Clear both hands and equip two-handed item
+        else {
+          return { ...prev, mainhand: item, offhand: null };
+        }
+      } else {
+        // Regular inventory item (max 20 slots)
+        if (prev.inventory.includes(item)) {
+          return { ...prev, inventory: prev.inventory.filter(i => i !== item) };
+        } else if (prev.inventory.length < 20) {
+          return { ...prev, inventory: [...prev.inventory, item] };
+        } else {
+          alert('🎒 Inventory full! You can only carry 20 items.');
+          return prev;
+        }
+      }
+    });
+  };
+  
+  const getEquipmentHandedness = (item: string): 'one-handed' | 'two-handed' | 'none' => {
+    const twoHandedWeapons = ['Greatsword', 'Battleaxe (Two-handed)', 'Longbow', 'Crossbow', 'Staff', 'Quarterstaff (Two-handed)', 'Warhammer (Two-handed)'];
+    const oneHandedWeapons = ['Sword', 'Dagger', 'Short Sword', 'Rapier', 'Scimitar', 'Handaxe', 'Light Hammer', 'Javelin', 'Spear', 'Trident', 'Warhammer', 'Quarterstaff'];
+    
+    if (twoHandedWeapons.some(weapon => item.includes(weapon.split(' ')[0]))) {
+      return 'two-handed';
+    } else if (oneHandedWeapons.some(weapon => item.includes(weapon.split(' ')[0]))) {
+      return 'one-handed';
+    } else {
+      return 'none';
+    }
   };
 
   const handleTraitToggle = (category: keyof CharacterTraits, trait: string) => {
@@ -371,16 +424,47 @@ export default function CharacterCustomization({ character, onComplete, onCancel
 
   const handleComplete = () => {
     // Convert selected equipment strings to Equipment objects
-    const equipmentObjects: Equipment[] = selectedEquipment.map((equipmentName, index) => ({
-      id: `equipment_${Date.now()}_${index}`,
-      name: equipmentName,
-      type: getEquipmentType(equipmentName),
-      description: getEquipmentDescription(equipmentName),
-      damage: getEquipmentDamage(equipmentName),
-      properties: [],
-      equipped: false,
-      quantity: 1
-    }));
+    const equipmentObjects: Equipment[] = [
+      // Mainhand item
+      ...(selectedEquipment.mainhand ? [{
+        id: `equipment_mainhand_${Date.now()}`,
+        name: selectedEquipment.mainhand,
+        type: getEquipmentType(selectedEquipment.mainhand),
+        slot: 'mainhand' as const,
+        handedness: getEquipmentHandedness(selectedEquipment.mainhand),
+        description: getEquipmentDescription(selectedEquipment.mainhand),
+        damage: getEquipmentDamage(selectedEquipment.mainhand),
+        properties: [],
+        equipped: true,
+        quantity: 1
+      }] : []),
+      // Offhand item
+      ...(selectedEquipment.offhand ? [{
+        id: `equipment_offhand_${Date.now()}`,
+        name: selectedEquipment.offhand,
+        type: getEquipmentType(selectedEquipment.offhand),
+        slot: 'offhand' as const,
+        handedness: getEquipmentHandedness(selectedEquipment.offhand),
+        description: getEquipmentDescription(selectedEquipment.offhand),
+        damage: getEquipmentDamage(selectedEquipment.offhand),
+        properties: [],
+        equipped: true,
+        quantity: 1
+      }] : []),
+      // Inventory items
+      ...selectedEquipment.inventory.map((equipmentName, index) => ({
+        id: `equipment_inventory_${Date.now()}_${index}`,
+        name: equipmentName,
+        type: getEquipmentType(equipmentName),
+        slot: 'inventory' as const,
+        handedness: 'none' as const,
+        description: getEquipmentDescription(equipmentName),
+        damage: getEquipmentDamage(equipmentName),
+        properties: [],
+        equipped: false,
+        quantity: 1
+      }))
+    ];
 
     const customizedCharacter: Character = {
       ...character,
@@ -460,6 +544,59 @@ export default function CharacterCustomization({ character, onComplete, onCancel
           <p className="text-gray-400">Level {character.level} {character.race} {character.class}</p>
         </div>
 
+        {/* Equipment Slots Display */}
+        <div className="mb-8 bg-gray-800 p-4 rounded-lg">
+          <h3 className="text-lg font-semibold mb-4 text-yellow-400">⚔️ Equipment Slots</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Main Hand */}
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h4 className="text-sm font-medium text-blue-400 mb-2">🗡️ Main Hand</h4>
+              {selectedEquipment.mainhand ? (
+                <div className="text-white text-sm bg-blue-900/30 p-2 rounded">
+                  {selectedEquipment.mainhand}
+                  {getEquipmentHandedness(selectedEquipment.mainhand) === 'two-handed' && (
+                    <span className="text-yellow-400 text-xs block">(Two-Handed)</span>
+                  )}
+                </div>
+              ) : (
+                <div className="text-gray-400 text-sm italic p-2">Empty</div>
+              )}
+            </div>
+            
+            {/* Off Hand */}
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h4 className="text-sm font-medium text-green-400 mb-2">🛡️ Off Hand</h4>
+              {selectedEquipment.offhand ? (
+                <div className="text-white text-sm bg-green-900/30 p-2 rounded">
+                  {selectedEquipment.offhand}
+                </div>
+              ) : selectedEquipment.mainhand && getEquipmentHandedness(selectedEquipment.mainhand) === 'two-handed' ? (
+                <div className="text-yellow-400 text-sm italic p-2">Occupied by two-handed weapon</div>
+              ) : (
+                <div className="text-gray-400 text-sm italic p-2">Empty</div>
+              )}
+            </div>
+            
+            {/* Inventory */}
+            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+              <h4 className="text-sm font-medium text-purple-400 mb-2">🎒 Inventory ({selectedEquipment.inventory.length}/20)</h4>
+              <div className="max-h-20 overflow-y-auto">
+                {selectedEquipment.inventory.length > 0 ? (
+                  <div className="space-y-1">
+                    {selectedEquipment.inventory.map((item, index) => (
+                      <div key={index} className="text-white text-xs bg-purple-900/30 p-1 rounded">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-sm italic p-2">Empty</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Starting Equipment */}
           <div className="space-y-6">
@@ -475,7 +612,7 @@ export default function CharacterCustomization({ character, onComplete, onCancel
                     <label key={item} className="flex items-center space-x-2 cursor-pointer bg-gray-800 p-2 rounded hover:bg-gray-700">
                       <input
                         type="checkbox"
-                        checked={selectedEquipment.includes(item)}
+                        checked={selectedEquipment.mainhand === item || selectedEquipment.offhand === item || selectedEquipment.inventory.includes(item)}
                         onChange={() => handleEquipmentToggle(item)}
                         className="rounded border-gray-600 text-blue-600 focus:ring-blue-500"
                       />
@@ -553,7 +690,7 @@ export default function CharacterCustomization({ character, onComplete, onCancel
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-gray-400">Equipment selected:</span>
-              <span className="ml-2 text-white">{selectedEquipment?.length || 0}</span>
+              <span className="ml-2 text-white">{(selectedEquipment.mainhand ? 1 : 0) + (selectedEquipment.offhand ? 1 : 0) + selectedEquipment.inventory.length}</span>
             </div>
             <div>
               <span className="text-gray-400">Traits selected:</span>
