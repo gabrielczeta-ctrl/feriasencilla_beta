@@ -14,6 +14,8 @@ import EnhancedMovementHUD from './components/EnhancedMovementHUD';
 import CombatManager from './components/CombatManager';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 import { generateRandomCritter, convertToAnimalSpeak, isGuestCritter } from './utils/animalCritters';
+import ConsolidatedActionWidget from './components/ConsolidatedActionWidget';
+import PriorityGameDisplay from './components/PriorityGameDisplay';
 
 export default function DnDPlatform() {
   const { state, dispatch } = useGameState();
@@ -722,8 +724,12 @@ export default function DnDPlatform() {
 
   // Playing Phase
   if (state.phase === 'playing') {
+    const currentCharacter = state.character || userCharacter;
+    const currentScene = "The Eternal Tavern";
+    const sceneDescription = "The tavern buzzes with activity as adventurers from across the realms gather. The fire crackles warmly in the stone hearth, casting dancing shadows on the wooden walls. A mysterious hooded figure sits alone in the corner, while the barkeep serves drinks to a group of chattering halflings. The air is thick with the scent of ale, roasted meat, and adventure.";
+
     return (
-      <div className="min-h-screen text-white relative overflow-auto">
+      <div className="min-h-screen text-white relative">
         <FireShaderBackground 
           setting="tavern"
           location="The Eternal Tavern"
@@ -734,28 +740,19 @@ export default function DnDPlatform() {
           onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
           onUpdateCharacterHP={updateCharacterHP}
         />
-        
-        {/* Game State Display */}
-        <div className="max-w-7xl mx-auto p-4">
-          <DMUpdateTimer
-            turnPhase={globalServerState.turnPhase}
-            turnStartTime={globalServerState.turnStartTime}
-            playerTurnDuration={globalServerState.playerTurnDuration}
-            dmUpdateInterval={globalServerState.dmUpdateInterval}
-            playersWhoActed={globalServerState.playersWhoActed}
-            totalPlayers={globalServerState.totalPlayers}
-            hasPlayerActed={hasPlayerActedThisTurn}
-          />
-        </div>
 
         {/* Header */}
-        <div className="bg-black/20 p-4 border-b border-white/10">
+        <div className="bg-black/20 backdrop-blur-sm p-4 border-b border-white/10">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">🎲 The Eternal Tavern</h1>
-              <p className="text-gray-400">
-                Global D&D Server | {globalServerState.totalPlayers} adventurers online
-                {state.inCombat && <span className="ml-2 text-red-400">⚔️ Combat</span>}
+              <p className="text-gray-300">
+                Global D&D Server • {globalServerState.totalPlayers} adventurers online
+                {isAuthenticated && userCharacter ? (
+                  <span className="ml-2 text-green-400">• Character Saved</span>
+                ) : !isAuthenticated ? (
+                  <span className="ml-2 text-purple-400">• Guest Mode</span>
+                ) : null}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -787,363 +784,105 @@ export default function DnDPlatform() {
           </div>
         </div>
 
-        {/* Main Game Grid */}
-        <div className="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Game World & Movement */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Current Scene */}
-            <div className="bg-gray-900 p-6 rounded-lg">
-              <h2 className="text-xl font-semibold mb-3">Current Scene</h2>
-              <p className="text-gray-300 leading-relaxed">
-                The tavern buzzes with activity as adventurers from across the realms gather. 
-                The fire crackles warmly in the stone hearth, casting dancing shadows on the 
-                wooden walls. A mysterious figure in a hooded cloak sits alone in the corner...
-              </p>
+        {/* Main Game Layout */}
+        <div className="max-w-7xl mx-auto p-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            
+            {/* Priority Game Display - Takes up 2 columns */}
+            <div className="xl:col-span-2">
+              <PriorityGameDisplay
+                currentScene={currentScene}
+                sceneDescription={sceneDescription}
+                chatMessages={chatMessages}
+                character={currentCharacter}
+                turnPhase={globalServerState.turnPhase}
+                turnStartTime={globalServerState.turnStartTime}
+                playerTurnDuration={globalServerState.playerTurnDuration}
+                dmUpdateInterval={globalServerState.dmUpdateInterval}
+              />
             </div>
 
-            {/* Enhanced Movement & Memory HUD */}
-            <EnhancedMovementHUD 
-              turnNumber={Math.floor((Date.now() - globalServerState.turnStartTime) / 30000) + 1}
-              gamePhase={globalServerState.turnPhase === 'player_turns' ? 'player_input' : 'ai_processing'}
-              canAct={globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn}
-              initialCharacter={{
-                id: playerId || 'player',
-                name: userCharacter?.name || playerName || 'Hero',
-                speed: 30,
-                conditions: [],
-                position: { x: 2, y: 2 },
-                hitPoints: userCharacter?.hitPoints || { current: 25, maximum: 25 },
-                armorClass: userCharacter?.armorClass || 15,
-                memory: []
-              }}
-              onAddAction={(action) => {
-                // Convert action to server format and send
-                const actionString = `[MOVEMENT] ${action.action}`;
-                if (globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn) {
-                  sendPlayerAction(actionString).then(() => {
-                    setHasPlayerActedThisTurn(true);
-                    console.log('✅ Movement action sent:', actionString);
-                  }).catch(error => {
-                    console.error('❌ Failed to send movement action:', error);
-                  });
-                  return true;
-                }
-                return false;
-              }}
-              onSaveState={(slot, snapshot) => {
-                localStorage.setItem(`dnd_enhanced_save_${slot}`, JSON.stringify(snapshot));
-                console.log(`💾 Game saved to slot ${slot}`);
-              }}
-              onLoadState={(slot) => {
-                const saved = localStorage.getItem(`dnd_enhanced_save_${slot}`);
-                if (saved) {
-                  console.log(`📁 Game loaded from slot ${slot}`);
-                  return JSON.parse(saved);
-                }
-                return null;
-              }}
+            {/* Consolidated Action Widget - Sidebar */}
+            <div className="xl:col-span-1">
+              <ConsolidatedActionWidget
+                character={currentCharacter}
+                isAuthenticated={isAuthenticated}
+                turnPhase={globalServerState.turnPhase}
+                hasPlayerActedThisTurn={hasPlayerActedThisTurn}
+                onSendAction={async (action: string) => {
+                  // Process the action with animal speak conversion if needed
+                  let processedAction = action;
+                  if (currentCharacter && isGuestCritter(currentCharacter)) {
+                    processedAction = convertToAnimalSpeak(action, currentCharacter.race);
+                  }
+                  await sendPlayerAction(processedAction);
+                  setHasPlayerActedThisTurn(true);
+                }}
+                onRollDice={async (expression: string, type: string, description?: string) => {
+                  await rollDice(expression, type, description);
+                }}
+                onSendChat={async (message: string, type: string) => {
+                  await sendChatMessage(message, type);
+                }}
+                onGenerateEquipment={currentCharacter ? async () => {
+                  await generateEquipment(currentCharacter);
+                } : undefined}
+                onGenerateLoot={async () => {
+                  const context = {
+                    currentScene: currentScene,
+                    averageLevel: currentCharacter?.level || 1,
+                    recentActions: "Exploring the mysterious tavern"
+                  };
+                  await generateLoot(context, 'normal');
+                }}
+              />
+            </div>
+
+          </div>
+
+          {/* DMUpdateTimer - Fixed at bottom */}
+          <div className="fixed bottom-4 left-4 z-40">
+            <DMUpdateTimer
+              turnPhase={globalServerState.turnPhase}
+              turnStartTime={globalServerState.turnStartTime}
+              playerTurnDuration={globalServerState.playerTurnDuration}
+              dmUpdateInterval={globalServerState.dmUpdateInterval}
+              playersWhoActed={globalServerState.playersWhoActed}
+              totalPlayers={globalServerState.totalPlayers}
             />
-
-            {/* Action Input Panel */}
-            <div className="bg-gray-900 p-6 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4">Your Turn</h3>
-              
-              {/* Action Input */}
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Action
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={actionInput}
-                      onChange={(e) => setActionInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
-                      placeholder="Describe what you want to do..."
-                      className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
-                      disabled={hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                    />
-                    <button
-                      onClick={handleSendAction}
-                      disabled={!actionInput.trim() || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
-                      title={
-                        hasPlayerActedThisTurn ? "You've already acted this turn" :
-                        globalServerState.turnPhase !== 'player_turns' ? "Not player turn phase" :
-                        !actionInput.trim() ? "Enter an action" : "Send action"
-                      }
-                    >
-                      Act
-                    </button>
-                  </div>
-                </div>
-
-                {/* Talk Input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Dialogue
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={talkInput}
-                      onChange={(e) => setTalkInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendTalk()}
-                      placeholder="What do you say?"
-                      className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
-                      disabled={hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                    />
-                    <button
-                      onClick={handleSendTalk}
-                      disabled={!talkInput.trim() || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                      className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
-                      title={
-                        hasPlayerActedThisTurn ? "You've already acted this turn" :
-                        globalServerState.turnPhase !== 'player_turns' ? "Not player turn phase" :
-                        !talkInput.trim() ? "Enter dialogue" : "Send dialogue"
-                      }
-                    >
-                      Say
-                    </button>
-                  </div>
-                </div>
-
-                {/* LLM Generation Test Section */}
-                <div className="mt-6 border-t border-gray-700 pt-4">
-                  <h4 className="text-md font-semibold mb-3 text-yellow-400">🤖 AI Generation (Test with Railway)</h4>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        if (userCharacter) {
-                          generateEquipment(userCharacter);
-                          console.log('🎒 Requesting equipment generation for:', userCharacter.name);
-                        } else {
-                          console.warn('No character to generate equipment for');
-                        }
-                      }}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm transition-colors"
-                      disabled={!userCharacter}
-                    >
-                      🎒 Generate Equipment
-                    </button>
-                    <button
-                      onClick={() => {
-                        const context = {
-                          currentScene: "The Eternal Tavern",
-                          averageLevel: 1,
-                          recentActions: "Exploring the mysterious tavern"
-                        };
-                        generateLoot(context, 'normal');
-                        console.log('💰 Requesting loot generation for context:', context);
-                      }}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded text-sm transition-colors"
-                    >
-                      💰 Generate Loot
-                    </button>
-                    <button
-                      onClick={() => {
-                        const context = {
-                          currentScene: "Dangerous Dragon Lair",
-                          averageLevel: 3,
-                          recentActions: "Defeating the dragon"
-                        };
-                        generateLoot(context, 'hard');
-                        console.log('🐉 Requesting epic loot generation');
-                      }}
-                      className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition-colors"
-                    >
-                      🐉 Epic Loot
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-2">
-                    These buttons test the LLM integration with the Railway deployment (real Claude API)
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Chat & Events */}
-            <div className="bg-gray-900 rounded-lg overflow-hidden">
-              <div className="p-4 bg-gray-800 border-b border-gray-700">
-                <h3 className="font-semibold">Game Events & Chat</h3>
-              </div>
-              <div 
-                ref={chatContainerRef}
-                className="h-96 overflow-y-auto p-4 space-y-3"
-              >
-                {chatMessages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`p-3 rounded-lg ${
-                      message.playerName === 'DM'
-                        ? 'bg-purple-900/30 border border-purple-700/50'
-                        : message.type === 'system'
-                        ? 'bg-blue-900/30 border border-blue-700/50'
-                        : 'bg-gray-800'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`font-medium ${
-                            message.playerName === 'DM' 
-                              ? 'text-purple-400' 
-                              : message.type === 'system'
-                              ? 'text-blue-400'
-                              : 'text-white'
-                          }`}>
-                            {message.playerName === 'DM' ? '🎭 DM' : message.playerName}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {new Date(message.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        <p className="text-gray-300 text-sm leading-relaxed">
-                          {message.content}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {/* Chat Input */}
-              <div className="p-4 bg-gray-800 border-t border-gray-700">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendChat()}
-                    placeholder="Chat with other players..."
-                    className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 text-sm"
-                  />
-                  <button
-                    onClick={handleSendChat}
-                    disabled={!chatInput.trim()}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-400 rounded text-sm transition-colors"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* Right Sidebar */}
-          <div className="space-y-6">
-            {/* Player Character */}
-            {userCharacter && (
-              <div className="bg-gray-900 p-4 rounded-lg">
-                <h3 className="font-semibold mb-3">{userCharacter.name}</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Level {userCharacter.level} {userCharacter.race} {userCharacter.class}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>HP:</span>
-                    <span className="text-red-400">
-                      {userCharacter.hitPoints.current}/{userCharacter.hitPoints.maximum}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>AC:</span>
-                    <span>{userCharacter.armorClass}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Prof Bonus:</span>
-                    <span>+{userCharacter.proficiencyBonus}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Dice Roller */}
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <h3 className="font-semibold mb-3">🎲 Dice Roller</h3>
-              <div className="flex gap-2 mb-3">
-                <input
-                  type="text"
-                  value={diceInput}
-                  onChange={(e) => setDiceInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleRollDice()}
-                  placeholder="1d20"
-                  className="flex-1 p-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400 text-sm"
-                />
-                <button
-                  onClick={handleRollDice}
-                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm transition-colors"
-                >
-                  Roll
-                </button>
-              </div>
-              
-              {/* Quick Roll Buttons */}
-              <div className="grid grid-cols-2 gap-1 text-xs">
-                {['1d20', '1d12', '1d10', '1d8', '1d6', '1d4'].map((dice) => (
-                  <button
-                    key={dice}
-                    onClick={() => setDiceInput(dice)}
-                    className="p-1 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
-                  >
-                    {dice}
-                  </button>
-                ))}
+          {/* Debug Panel - Optional */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-6 bg-gray-900/50 backdrop-blur-md border border-gray-700/50 rounded-lg p-4">
+              <h3 className="text-sm font-semibold mb-2 text-gray-400">🐛 Debug Info</h3>
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>Phase: {state.phase}</div>
+                <div>Turn Phase: {globalServerState.turnPhase}</div>
+                <div>Character: {currentCharacter ? `${currentCharacter.name} (${currentCharacter.race} ${currentCharacter.class})` : 'None'}</div>
+                <div>Has Acted: {hasPlayerActedThisTurn.toString()}</div>
+                <div>Chat Messages: {chatMessages.length}</div>
+                <div>Debug Prompts: {debugPrompts.length}</div>
               </div>
             </div>
+          )}
 
-            {/* Recent Dice Rolls */}
-            {diceRolls.length > 0 && (
-              <div className="bg-gray-900 p-4 rounded-lg">
-                <h3 className="font-semibold mb-3 text-yellow-400">🎲 Recent Rolls</h3>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {diceRolls.slice(-6).map((roll, index) => (
-                    <div key={roll.id} className="text-sm bg-gray-800 p-3 rounded border-l-4 border-l-blue-500">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="text-blue-400 font-medium">{roll.playerName}</span>
-                          <span className="text-gray-400 mx-2">•</span>
-                          <span className="text-yellow-400 font-mono">{roll.expression}</span>
-                        </div>
-                        <div className={`font-bold text-lg ${
-                          roll.success !== undefined ? 
-                            (roll.success ? 'text-green-400' : 'text-red-400') : 
-                            'text-white'
-                        }`}>
-                          {roll.total}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Combat Manager */}
-        <CombatManager
-          isVisible={showCombatManager}
-          onToggle={() => setShowCombatManager(!showCombatManager)}
-          onAddAction={(action) => {
-            // Convert action to server format and send
-            const actionString = `[COMBAT] ${action.action}`;
-            if (globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn) {
-              sendPlayerAction(actionString).then(() => {
-                setHasPlayerActedThisTurn(true);
-                console.log('✅ Combat action sent:', actionString);
-              }).catch(error => {
-                console.error('❌ Failed to send combat action:', error);
-              });
-              return true;
-            }
-            return false;
-          }}
-          playerId={playerId || 'unknown'}
-          playerName={playerName}
-          canAct={globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn}
-        />
+        {/* Modals */}
+        <AnimatePresence>
+          {showCombatManager && (
+            <CombatManager
+              isOpen={showCombatManager}
+              onClose={() => setShowCombatManager(false)}
+              players={[]}
+              onUpdatePlayer={() => {}}
+              onAddNPC={() => {}}
+              onStartCombat={() => {}}
+              onEndCombat={() => {}}
+            />
+          )}
+        </AnimatePresence>
 
         {/* Authentication Modal */}
         <AuthModal
