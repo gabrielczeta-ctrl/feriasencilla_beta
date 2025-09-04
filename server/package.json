@@ -6,7 +6,8 @@
   "dependencies": {
     "ioredis": "^5.4.1",
     "ws": "^8.17.0",
-    "@anthropic-ai/sdk": "^0.24.3"
+    "@anthropic-ai/sdk": "^0.24.3",
+    "bcrypt": "^5.1.0"
   },
   "scripts": {
     "start": "node dnd-server.js",

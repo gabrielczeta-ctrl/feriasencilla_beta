@@ -8,6 +8,18 @@ interface DnDWebSocketState {
   status: 'disconnected' | 'connecting' | 'connected';
   playerId: string | null;
   currentRoom: GameRoom | null;
+  isAuthenticated: boolean;
+  userCharacter: Character | null;
+  
+  // Global server state
+  globalServerState: {
+    turnPhase: 'player_turns' | 'dm_processing' | 'dm_response';
+    turnStartTime: number;
+    playerTurnDuration: number;
+    dmUpdateInterval: number;
+    playersWhoActed: number;
+    totalPlayers: number;
+  } | null;
   
   // Game data
   publicRooms: GameRoom[];
@@ -17,6 +29,8 @@ interface DnDWebSocketState {
   // Actions
   connect: (playerName: string) => void;
   disconnect: () => void;
+  login: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string) => Promise<void>;
   createRoom: (roomData: CreateRoomData) => Promise<void>;
   joinRoom: (roomId: string) => Promise<void>;
   leaveRoom: () => Promise<void>;
@@ -44,6 +58,16 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   const [publicRooms, setPublicRooms] = useState<GameRoom[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [diceRolls, setDiceRolls] = useState<DiceRoll[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userCharacter, setUserCharacter] = useState<Character | null>(null);
+  const [globalServerState, setGlobalServerState] = useState<{
+    turnPhase: 'player_turns' | 'dm_processing' | 'dm_response';
+    turnStartTime: number;
+    playerTurnDuration: number;
+    dmUpdateInterval: number;
+    playersWhoActed: number;
+    totalPlayers: number;
+  } | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -142,6 +166,86 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
     switch (message.type) {
       case 'player_connected':
         setPlayerId(message.playerId);
+        setIsAuthenticated(message.isAuthenticated || false);
+        if (message.character) {
+          setUserCharacter(message.character);
+        }
+        // Auto-join global room
+        if (message.globalRoom) {
+          setCurrentRoom(message.globalRoom.room);
+          if (message.globalRoom.storyContext) {
+            setChatMessages(message.globalRoom.storyContext);
+          }
+        }
+        break;
+
+      case 'login_response':
+      case 'register_response':
+        if (message.success) {
+          setIsAuthenticated(true);
+          if (message.character) {
+            setUserCharacter(message.character);
+          }
+        }
+        // Propagate response to calling component
+        if (wsRef.current) {
+          (wsRef.current as any).lastAuthResponse = message;
+        }
+        break;
+
+      case 'turn_phase_change':
+        // Handle turn phase changes
+        console.log(`🎮 Turn phase: ${message.phase} - ${message.message}`);
+        setGlobalServerState(prev => prev ? {
+          ...prev,
+          turnPhase: message.phase,
+          turnStartTime: Date.now(),
+          playersWhoActed: 0 // Reset when turn changes
+        } : {
+          turnPhase: message.phase,
+          turnStartTime: Date.now(),
+          playerTurnDuration: message.duration || 15000,
+          dmUpdateInterval: 30000,
+          playersWhoActed: 0,
+          totalPlayers: 1
+        });
+        break;
+
+      case 'dm_story_update':
+        // Handle DM story updates
+        if (message.story) {
+          setChatMessages(prev => [...prev, message.story]);
+        }
+        break;
+
+      case 'player_action_queued':
+        // Show when another player queues an action
+        console.log(`⏰ ${message.playerName} queued action: ${message.action}`);
+        break;
+
+      case 'action_submitted':
+      case 'action_error':
+        // Handle action feedback
+        console.log(`💬 Action result: ${message.message}`);
+        break;
+
+      case 'welcome_to_global':
+        // Handle global room welcome
+        if (message.room) {
+          setCurrentRoom(message.room);
+        }
+        if (message.storyContext) {
+          setChatMessages(message.storyContext);
+        }
+        // Initialize global server state
+        setGlobalServerState({
+          turnPhase: message.currentPhase || 'player_turns',
+          turnStartTime: Date.now() - (message.nextTurnIn || 0),
+          playerTurnDuration: 15000,
+          dmUpdateInterval: 30000,
+          playersWhoActed: 0,
+          totalPlayers: message.room?.playerCount || 1
+        });
         break;
 
       case 'room_created':
@@ -236,6 +340,89 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   }, [currentRoom]);
 
   // Actions
+  // Authentication methods
+  const login = useCallback(async (username: string, password: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      // Set up response handler
+      const responseHandler = () => {
+        const response = (wsRef.current as any)?.lastAuthResponse;
+        if (response && (response.type === 'login_response')) {
+          (wsRef.current as any).lastAuthResponse = null;
+          if (response.success) {
+            resolve();
+          } else {
+            reject(new Error(response.message || 'Login failed'));
+          }
+        } else {
+          // Wait a bit more
+          setTimeout(responseHandler, 100);
+        }
+      };
+
+      sendMessage({
+        type: 'login',
+        username,
+        password
+      });
+
+      // Start checking for response
+      setTimeout(responseHandler, 100);
+      
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        if ((wsRef.current as any)?.lastAuthResponse?.type !== 'login_response') {
+          reject(new Error('Login timeout'));
+        }
+      }, 10000);
+    });
+  }, [sendMessage]);
+
+  const register = useCallback(async (username: string, password: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        reject(new Error('Not connected to server'));
+        return;
+      }
+
+      // Set up response handler
+      const responseHandler = () => {
+        const response = (wsRef.current as any)?.lastAuthResponse;
+        if (response && (response.type === 'register_response')) {
+          (wsRef.current as any).lastAuthResponse = null;
+          if (response.success) {
+            resolve();
+          } else {
+            reject(new Error(response.message || 'Registration failed'));
+          }
+        } else {
+          // Wait a bit more
+          setTimeout(responseHandler, 100);
+        }
+      };
+
+      sendMessage({
+        type: 'register',
+        username,
+        password
+      });
+
+      // Start checking for response
+      setTimeout(responseHandler, 100);
+      
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        if ((wsRef.current as any)?.lastAuthResponse?.type !== 'register_response') {
+          reject(new Error('Registration timeout'));
+        }
+      }, 10000);
+    });
+  }, [sendMessage]);
+
   const createRoom = useCallback(async (roomData: CreateRoomData): Promise<void> => {
     if (!sendMessage({
       type: 'create_room',
@@ -342,11 +529,16 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
     status,
     playerId,
     currentRoom,
+    isAuthenticated,
+    userCharacter,
+    globalServerState,
     publicRooms,
     chatMessages,
     diceRolls,
     connect,
     disconnect,
+    login,
+    register,
     createRoom,
     joinRoom,
     leaveRoom,

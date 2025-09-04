@@ -8,6 +8,8 @@ import CharacterSheet from './components/CharacterSheet';
 import CharacterCustomization from './components/CharacterCustomization';
 import FireShaderBackground from './components/FireShaderBackground';
 import GameHUD from './components/GameHUD';
+import AuthModal from './components/AuthModal';
+import DMUpdateTimer from './components/DMUpdateTimer';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 
 export default function DnDPlatform() {
@@ -19,6 +21,16 @@ export default function DnDPlatform() {
   const [chatInput, setChatInput] = useState('');
   const [diceInput, setDiceInput] = useState('1d20');
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [hasPlayerActedThisTurn, setHasPlayerActedThisTurn] = useState(false);
+  const [globalServerState, setGlobalServerState] = useState({
+    turnPhase: 'player_turns' as 'player_turns' | 'dm_processing' | 'dm_response',
+    turnStartTime: Date.now(),
+    playerTurnDuration: 15000,
+    dmUpdateInterval: 30000,
+    playersWhoActed: 0,
+    totalPlayers: 1
+  });
   const [createRoomData, setCreateRoomData] = useState({
     roomName: '',
     description: '',
@@ -33,11 +45,16 @@ export default function DnDPlatform() {
     status,
     playerId,
     currentRoom,
+    isAuthenticated,
+    userCharacter,
+    globalServerState: hookGlobalState,
     publicRooms,
     chatMessages,
     diceRolls,
     connect,
     disconnect,
+    login,
+    register,
     createRoom,
     joinRoom,
     leaveRoom,
@@ -48,6 +65,24 @@ export default function DnDPlatform() {
     rollDice,
     sendChatMessage
   } = useDnDWebSocket(wsUrl);
+
+  // Update global server state when hook state changes
+  useEffect(() => {
+    if (hookGlobalState) {
+      setGlobalServerState(hookGlobalState);
+      // Reset player turn state when turn phase changes to player_turns
+      if (hookGlobalState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn) {
+        setHasPlayerActedThisTurn(false);
+      }
+    }
+  }, [hookGlobalState]);
+
+  // Reset turn state when new turn starts
+  useEffect(() => {
+    if (globalServerState.turnPhase === 'player_turns') {
+      setHasPlayerActedThisTurn(false);
+    }
+  }, [globalServerState.turnStartTime]);
 
   // Initialize player name from localStorage
   useEffect(() => {
@@ -75,31 +110,25 @@ export default function DnDPlatform() {
     }
   }, [chatMessages, state.chatAutoScroll]);
 
-  // Update game state based on current room state
+  // Update game state based on current room state - Global Server Mode
   useEffect(() => {
-    if (currentRoom) {
-      dispatch({ type: 'SET_ROOM', payload: currentRoom });
-      const currentPlayer = currentRoom.players.find(p => p.id === playerId);
-      dispatch({ type: 'SET_PLAYER', payload: currentPlayer });
-      
-      if (currentPlayer?.character) {
-        dispatch({ type: 'SET_CHARACTER', payload: currentPlayer.character });
+    if (status === 'connected' && playerId) {
+      // Global server: players can play without characters or create one if they want
+      if (userCharacter) {
+        dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
       }
-      
-      if (currentPlayer && !currentPlayer.character) {
-        dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
-      } else if (currentPlayer && currentPlayer.character && currentRoom.gameState?.phase === 'playing') {
-        dispatch({ type: 'SET_PHASE', payload: 'playing' });
-      }
-    } else if (status === 'connected') {
-      dispatch({ type: 'SET_PHASE', payload: 'lobby' });
+      dispatch({ type: 'SET_PHASE', payload: 'playing' });
+    } else if (status === 'disconnected') {
+      dispatch({ type: 'SET_PHASE', payload: 'login' });
     }
-  }, [currentRoom, playerId, status, dispatch]);
+  }, [status, playerId, userCharacter, dispatch]);
 
   const handleLogin = () => {
     if (playerName.trim()) {
       localStorage.setItem('dnd_player_name', playerName.trim());
       connect(playerName.trim());
+      // Skip lobby and go straight to global server
+      dispatch({ type: 'SET_PHASE', payload: 'playing' });
     }
   };
 
@@ -172,18 +201,14 @@ export default function DnDPlatform() {
   };
 
   const updateCharacterHP = async (change: number) => {
-    if (!currentRoom || !playerId) return;
-    
-    const currentPlayer = currentRoom.players.find(p => p.id === playerId);
-    if (!currentPlayer?.character) return;
+    if (!userCharacter) return;
 
-    const character = currentPlayer.character;
-    const newCurrent = Math.max(0, Math.min(character.hitPoints.maximum, character.hitPoints.current + change));
+    const newCurrent = Math.max(0, Math.min(userCharacter.hitPoints.maximum, userCharacter.hitPoints.current + change));
     
     const updatedCharacter = {
-      ...character,
+      ...userCharacter,
       hitPoints: {
-        ...character.hitPoints,
+        ...userCharacter.hitPoints,
         current: newCurrent
       }
     };
@@ -194,8 +219,8 @@ export default function DnDPlatform() {
       
       // Add a system message for HP changes
       const hpChangeMsg = change > 0 ? 
-        `${character.name} regains ${change} hit points (${newCurrent}/${character.hitPoints.maximum} HP)` :
-        `${character.name} takes ${Math.abs(change)} damage (${newCurrent}/${character.hitPoints.maximum} HP)`;
+        `${userCharacter.name} regains ${change} hit points (${newCurrent}/${userCharacter.hitPoints.maximum} HP)` :
+        `${userCharacter.name} takes ${Math.abs(change)} damage (${newCurrent}/${userCharacter.hitPoints.maximum} HP)`;
         
       await sendChatMessage(hpChangeMsg, 'system');
       
@@ -205,10 +230,11 @@ export default function DnDPlatform() {
   };
 
   const handleSendAction = async () => {
-    if (actionInput.trim()) {
+    if (actionInput.trim() && !hasPlayerActedThisTurn && globalServerState.turnPhase === 'player_turns') {
       try {
         await sendPlayerAction(actionInput.trim());
         setActionInput('');
+        setHasPlayerActedThisTurn(true);
       } catch (error) {
         console.error('Failed to send action:', error);
       }
@@ -269,6 +295,22 @@ export default function DnDPlatform() {
             >
               {status === 'connecting' ? 'Connecting...' : 'Enter the Realm'}
             </button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-600"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-gray-900 text-gray-400">or</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded font-semibold transition-colors"
+            >
+              🔐 Login with Account
+            </button>
           </div>
 
           <div className="mt-4 text-center">
@@ -295,7 +337,14 @@ export default function DnDPlatform() {
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-3xl font-bold">🏰 Campaign Lobby</h1>
             <div className="flex items-center gap-4">
-              <span className="text-gray-400">Welcome, {playerName}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">Welcome, {playerName}</span>
+                {isAuthenticated && (
+                  <span className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded border border-green-500/30">
+                    🔐 Authenticated {userCharacter && '• Character Saved'}
+                  </span>
+                )}
+              </div>
               <button
                 onClick={disconnect}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
@@ -496,15 +545,14 @@ export default function DnDPlatform() {
   }
 
   // Playing Phase
-  if (state.phase === 'playing' && currentRoom) {
-    const currentPlayer = currentRoom.players.find(p => p.id === playerId);
-    const isDM = currentPlayer?.role === 'dm';
+  if (state.phase === 'playing') {
+    // Global server mode - no current room needed
 
     return (
       <div className="min-h-screen text-white relative overflow-auto">
         <FireShaderBackground 
-          setting={currentRoom?.gameState?.story?.location || 'tavern'}
-          location={currentRoom?.currentScene || currentRoom?.gameState?.story?.location || 'The Prancing Pony'}
+          setting="tavern"
+          location="The Eternal Tavern"
         />
         
         {/* Game HUD */}
@@ -512,13 +560,26 @@ export default function DnDPlatform() {
           onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
           onUpdateCharacterHP={updateCharacterHP}
         />
+        {/* Global Server Timer */}
+        <div className="max-w-7xl mx-auto p-4">
+          <DMUpdateTimer
+            turnPhase={globalServerState.turnPhase}
+            turnStartTime={globalServerState.turnStartTime}
+            playerTurnDuration={globalServerState.playerTurnDuration}
+            dmUpdateInterval={globalServerState.dmUpdateInterval}
+            playersWhoActed={globalServerState.playersWhoActed}
+            totalPlayers={globalServerState.totalPlayers}
+            hasPlayerActed={hasPlayerActedThisTurn}
+          />
+        </div>
+
         {/* Header */}
         <div className="bg-black/20 p-4 border-b border-white/10">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">{currentRoom.name}</h1>
+              <h1 className="text-2xl font-bold">🎲 The Eternal Tavern</h1>
               <p className="text-gray-400">
-                {currentRoom.gameState.story.location} | {currentRoom.players.length} players
+                Global D&D Server | {globalServerState.totalPlayers} adventurers online
                 {state.inCombat && <span className="ml-2 text-red-400">⚔️ Combat</span>}
               </p>
             </div>
@@ -579,16 +640,35 @@ export default function DnDPlatform() {
                   value={actionInput}
                   onChange={(e) => setActionInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
-                  placeholder="Describe your action..."
+                  placeholder={
+                    hasPlayerActedThisTurn 
+                      ? "You've already acted this turn. Wait for DM response..." 
+                      : globalServerState.turnPhase !== 'player_turns'
+                        ? "Wait for your turn to send actions..."
+                        : "Describe your action in one sentence..."
+                  }
                   className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
                   maxLength={500}
+                  disabled={hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
                 />
                 <button
                   onClick={handleSendAction}
-                  disabled={!actionInput.trim()}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 rounded transition-colors"
+                  disabled={
+                    !actionInput.trim() || 
+                    hasPlayerActedThisTurn || 
+                    globalServerState.turnPhase !== 'player_turns'
+                  }
+                  className={`px-6 py-3 rounded transition-colors font-semibold ${
+                    hasPlayerActedThisTurn
+                      ? 'bg-green-600 text-white cursor-default'
+                      : globalServerState.turnPhase !== 'player_turns'
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : actionInput.trim()
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                          : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                  }`}
                 >
-                  Act
+                  {hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Send'}
                 </button>
               </div>
             </div>
@@ -634,23 +714,23 @@ export default function DnDPlatform() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Character Info */}
-            {currentPlayer?.character ? (
+            {userCharacter ? (
               <div className="bg-gray-900 p-4 rounded-lg">
                 <h3 className="font-semibold mb-3">Your Character</h3>
                 <div className="space-y-2 text-sm">
-                  <div className="font-medium">{currentPlayer.character.name}</div>
+                  <div className="font-medium">{userCharacter.name}</div>
                   <div className="text-gray-400">
-                    Level {currentPlayer.character.level} {currentPlayer.character.race} {currentPlayer.character.class}
+                    Level {userCharacter.level} {userCharacter.race} {userCharacter.class}
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-red-400">
-                        HP: {currentPlayer.character.hitPoints.current}/{currentPlayer.character.hitPoints.maximum}
+                        HP: {userCharacter.hitPoints.current}/{userCharacter.hitPoints.maximum}
                       </span>
                       <div className="flex gap-1">
                         <button
                           onClick={() => updateCharacterHP(-1)}
-                          disabled={currentPlayer.character.hitPoints.current <= 0}
+                          disabled={userCharacter.hitPoints.current <= 0}
                           className="w-6 h-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 rounded text-xs font-bold transition-colors"
                           title="Take 1 damage"
                         >
@@ -658,7 +738,7 @@ export default function DnDPlatform() {
                         </button>
                         <button
                           onClick={() => updateCharacterHP(1)}
-                          disabled={currentPlayer.character.hitPoints.current >= currentPlayer.character.hitPoints.maximum}
+                          disabled={userCharacter.hitPoints.current >= userCharacter.hitPoints.maximum}
                           className="w-6 h-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 rounded text-xs font-bold transition-colors"
                           title="Heal 1 HP"
                         >
@@ -669,20 +749,20 @@ export default function DnDPlatform() {
                     <div className={`w-full bg-gray-700 rounded-full h-2 overflow-hidden`}>
                       <div 
                         className={`h-full transition-all duration-300 ${
-                          currentPlayer.character.hitPoints.current <= currentPlayer.character.hitPoints.maximum * 0.25 
+                          userCharacter.hitPoints.current <= userCharacter.hitPoints.maximum * 0.25 
                             ? 'bg-red-500' 
-                            : currentPlayer.character.hitPoints.current <= currentPlayer.character.hitPoints.maximum * 0.5
+                            : userCharacter.hitPoints.current <= userCharacter.hitPoints.maximum * 0.5
                             ? 'bg-yellow-500'
                             : 'bg-green-500'
                         }`}
                         style={{ 
-                          width: `${Math.max(0, (currentPlayer.character.hitPoints.current / currentPlayer.character.hitPoints.maximum) * 100)}%` 
+                          width: `${Math.max(0, (userCharacter.hitPoints.current / userCharacter.hitPoints.maximum) * 100)}%` 
                         }}
                       />
                     </div>
                   </div>
                   <div className="text-blue-400">
-                    AC: {currentPlayer.character.armorClass}
+                    AC: {userCharacter.armorClass}
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
@@ -703,9 +783,9 @@ export default function DnDPlatform() {
                 {/* Inventory Section */}
                 <div className="mt-4 space-y-2">
                   <h4 className="font-medium text-purple-400">🎒 Inventory</h4>
-                  {currentPlayer.character.equipment && currentPlayer.character.equipment.length > 0 ? (
+                  {userCharacter.equipment && userCharacter.equipment.length > 0 ? (
                     <div className="space-y-1">
-                      {currentPlayer.character.equipment.slice(0, 5).map((item, index) => (
+                      {userCharacter.equipment.slice(0, 5).map((item, index) => (
                         <div key={index} className="flex items-center justify-between text-xs bg-gray-800 p-2 rounded">
                           <div className="flex items-center space-x-2">
                             <span className={`w-2 h-2 rounded-full ${
@@ -727,9 +807,9 @@ export default function DnDPlatform() {
                           </button>
                         </div>
                       ))}
-                      {currentPlayer.character.equipment.length > 5 && (
+                      {userCharacter.equipment.length > 5 && (
                         <div className="text-xs text-gray-500 text-center">
-                          +{currentPlayer.character.equipment.length - 5} more items
+                          +{userCharacter.equipment.length - 5} more items
                         </div>
                       )}
                     </div>
@@ -742,7 +822,7 @@ export default function DnDPlatform() {
               <div className="bg-gray-900 p-4 rounded-lg">
                 <h3 className="font-semibold mb-3">⚔️ Character</h3>
                 <p className="text-gray-400 text-sm mb-4">
-                  Playing as: <span className="text-white font-medium">{currentPlayer?.name || "Anonymous Adventurer"}</span>
+                  Playing as: <span className="text-white font-medium">{playerName || "Anonymous Adventurer"}</span>
                 </p>
                 <button
                   onClick={() => dispatch({ type: 'SET_PHASE', payload: 'character_creation' })}
@@ -881,7 +961,7 @@ export default function DnDPlatform() {
 
         {/* Character Sheet Modal */}
         <AnimatePresence>
-          {state.activeModal === 'character-sheet' && currentPlayer?.character && (
+          {state.activeModal === 'character-sheet' && userCharacter && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -897,7 +977,7 @@ export default function DnDPlatform() {
                 className="max-w-4xl w-full max-h-[90vh] overflow-y-auto"
               >
                 <CharacterSheet
-                  character={currentPlayer.character}
+                  character={userCharacter}
                   onSave={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
                   onCancel={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
                   isEditing={true}
@@ -909,7 +989,7 @@ export default function DnDPlatform() {
 
         {/* Character Profile Modal */}
         <AnimatePresence>
-          {state.activeModal === 'character-profile' && currentPlayer?.character && (
+          {state.activeModal === 'character-profile' && userCharacter && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -937,9 +1017,9 @@ export default function DnDPlatform() {
                 <div className="space-y-6 text-white">
                   {/* Character Header */}
                   <div className="text-center pb-4 border-b border-gray-700">
-                    <h3 className="text-3xl font-bold text-purple-400">{currentPlayer.character.name}</h3>
+                    <h3 className="text-3xl font-bold text-purple-400">{userCharacter.name}</h3>
                     <p className="text-lg text-gray-300 mt-2">
-                      Level {currentPlayer.character.level} {currentPlayer.character.race} {currentPlayer.character.class}
+                      Level {userCharacter.level} {userCharacter.race} {userCharacter.class}
                     </p>
                   </div>
                   
@@ -947,20 +1027,20 @@ export default function DnDPlatform() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-gray-800 p-3 rounded text-center">
                       <div className="text-red-400 font-bold text-xl">
-                        {currentPlayer.character.hitPoints.current}/{currentPlayer.character.hitPoints.maximum}
+                        {userCharacter.hitPoints.current}/{userCharacter.hitPoints.maximum}
                       </div>
                       <div className="text-xs text-gray-400">Hit Points</div>
                     </div>
                     <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-blue-400 font-bold text-xl">{currentPlayer.character.armorClass}</div>
+                      <div className="text-blue-400 font-bold text-xl">{userCharacter.armorClass}</div>
                       <div className="text-xs text-gray-400">Armor Class</div>
                     </div>
                     <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-green-400 font-bold text-xl">+{currentPlayer.character.proficiencyBonus}</div>
+                      <div className="text-green-400 font-bold text-xl">+{userCharacter.proficiencyBonus}</div>
                       <div className="text-xs text-gray-400">Proficiency</div>
                     </div>
                     <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-purple-400 font-bold text-xl">{currentPlayer.character.equipment?.length || 0}</div>
+                      <div className="text-purple-400 font-bold text-xl">{userCharacter.equipment?.length || 0}</div>
                       <div className="text-xs text-gray-400">Items</div>
                     </div>
                   </div>
@@ -969,7 +1049,7 @@ export default function DnDPlatform() {
                   <div>
                     <h4 className="text-lg font-semibold mb-3 text-yellow-400">Ability Scores</h4>
                     <div className="grid grid-cols-3 gap-3">
-                      {Object.entries(currentPlayer.character.stats).map(([stat, value]) => (
+                      {Object.entries(userCharacter.stats).map(([stat, value]) => (
                         <div key={stat} className="bg-gray-800 p-2 rounded text-center">
                           <div className="text-white font-bold">{value}</div>
                           <div className="text-xs text-gray-400 capitalize">{stat.slice(0,3)}</div>
@@ -982,11 +1062,11 @@ export default function DnDPlatform() {
                   </div>
                   
                   {/* Backstory */}
-                  {currentPlayer.character.backstory && (
+                  {userCharacter.backstory && (
                     <div>
                       <h4 className="text-lg font-semibold mb-3 text-yellow-400">Backstory</h4>
                       <div className="bg-gray-800 p-4 rounded">
-                        <p className="text-gray-300 text-sm leading-relaxed">{currentPlayer.character.backstory}</p>
+                        <p className="text-gray-300 text-sm leading-relaxed">{userCharacter.backstory}</p>
                       </div>
                     </div>
                   )}
@@ -995,7 +1075,7 @@ export default function DnDPlatform() {
                   <div>
                     <h4 className="text-lg font-semibold mb-3 text-yellow-400">Proficient Skills</h4>
                     <div className="flex flex-wrap gap-2">
-                      {Object.entries(currentPlayer.character.skills || {})
+                      {Object.entries(userCharacter.skills || {})
                         .filter(([_, proficient]) => proficient)
                         .map(([skill]) => (
                           <span key={skill} className="bg-blue-600 px-3 py-1 rounded-full text-xs">{skill}</span>
@@ -1004,11 +1084,11 @@ export default function DnDPlatform() {
                   </div>
                   
                   {/* Equipment */}
-                  {currentPlayer.character.equipment && currentPlayer.character.equipment.length > 0 && (
+                  {userCharacter.equipment && userCharacter.equipment.length > 0 && (
                     <div>
                       <h4 className="text-lg font-semibold mb-3 text-yellow-400">Equipment</h4>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {currentPlayer.character.equipment.map((item, index) => (
+                        {userCharacter.equipment.map((item, index) => (
                           <div key={index} className="flex items-center justify-between bg-gray-800 p-2 rounded text-sm">
                             <div className="flex items-center space-x-2">
                               <span className={`w-2 h-2 rounded-full ${
@@ -1030,6 +1110,19 @@ export default function DnDPlatform() {
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Authentication Modal */}
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onLogin={async (username, password) => {
+            await login(username, password);
+            setPlayerName(username);
+          }}
+          onRegister={async (username, password) => {
+            await register(username, password);
+            setPlayerName(username);
+          }}
+        />
       </div>
     );
   }

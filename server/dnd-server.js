@@ -3,6 +3,8 @@ import { WebSocketServer } from "ws";
 import Redis from "ioredis";
 import crypto from "crypto";
 import { ClaudeDM } from "./claude-dm.js";
+import { UserManager } from "./userManager.js";
+import { GlobalGameManager } from "./globalGameManager.js";
 
 const PORT = process.env.PORT || 8080;
 const REDIS_URL = process.env.REDIS_PUBLIC_URL || process.env.REDIS_URL || process.env.REDIS_PRIVATE_URL || "redis://localhost:6379";
@@ -20,6 +22,10 @@ console.log("🔍 Has Redis:", hasRedis);
 // Initialize Claude DM
 const claudeDM = new ClaudeDM();
 console.log("🎭 Claude DM initialized");
+
+// Initialize User Manager (will be set up after Redis connection)
+let userManager;
+let globalGameManager;
 
 if (hasRedis) {
   const redisConfig = {
@@ -40,12 +46,27 @@ if (hasRedis) {
     await sub.subscribe("dnd:channel");
     redisConnected = true;
     console.log("✅ Redis connected successfully!");
+    
+    // Initialize User Manager with Redis
+    userManager = new UserManager(redis);
+    console.log("👤 User Manager initialized with Redis");
+    
+    // Initialize Global Game Manager
+    globalGameManager = new GlobalGameManager(redis, userManager);
+    console.log("🌍 Global Game Manager initialized with Redis");
   } catch (error) {
     console.warn("⚠️ Redis connection failed, running without persistence:");
     console.warn("   Error:", error.message);
   }
 } else {
   console.log("🔄 No Redis service configured, running without persistence");
+  // Initialize User Manager without Redis (in-memory fallback)
+  userManager = new UserManager(null);
+  console.log("👤 User Manager initialized (in-memory mode)");
+  
+  // Initialize Global Game Manager without Redis
+  globalGameManager = new GlobalGameManager(null, userManager);
+  console.log("🌍 Global Game Manager initialized (in-memory mode)");
 }
 
 // In-memory storage (fallback when Redis is not available)
@@ -75,7 +96,12 @@ const clients = new Set();
 wss.on("connection", (ws, req) => {
   clients.add(ws);
   ws.playerId = null;
-  ws.roomId = null;
+  ws.roomId = 'global-server'; // All players join global server
+  
+  // Register client with global game manager
+  if (globalGameManager) {
+    globalGameManager.addClient(ws);
+  }
 
   console.log(`👤 New connection (${clients.size} total)`);
 
@@ -83,6 +109,11 @@ wss.on("connection", (ws, req) => {
     clients.delete(ws);
     if (ws.playerId && ws.roomId) {
       handlePlayerDisconnect(ws.playerId, ws.roomId);
+      // Remove from global game manager
+      if (globalGameManager) {
+        globalGameManager.removePlayer(ws.playerId);
+        globalGameManager.removeClient(ws);
+      }
     }
     console.log(`👋 Connection closed (${clients.size} remaining)`);
   });
@@ -117,6 +148,14 @@ async function handleMessage(ws, msg, ip) {
   }
 
   switch (msg.type) {
+    case "register":
+      await handleRegister(ws, msg);
+      break;
+      
+    case "login":
+      await handleLogin(ws, msg);
+      break;
+      
     case "player_connect":
       await handlePlayerConnect(ws, msg);
       break;
@@ -166,17 +205,121 @@ async function handleMessage(ws, msg, ip) {
   }
 }
 
+// Authentication handlers
+async function handleRegister(ws, msg) {
+  if (!userManager) {
+    ws.send(JSON.stringify({
+      type: "register_response",
+      success: false,
+      message: "User management not available"
+    }));
+    return;
+  }
+
+  const { username, password } = msg;
+  
+  if (!username || !password) {
+    ws.send(JSON.stringify({
+      type: "register_response",
+      success: false,
+      message: "Username and password required"
+    }));
+    return;
+  }
+
+  if (username.length < 3 || password.length < 6) {
+    ws.send(JSON.stringify({
+      type: "register_response",
+      success: false,
+      message: "Username must be 3+ chars, password must be 6+ chars"
+    }));
+    return;
+  }
+
+  const result = await userManager.registerUser(username, password);
+  
+  ws.send(JSON.stringify({
+    type: "register_response",
+    ...result
+  }));
+}
+
+async function handleLogin(ws, msg) {
+  if (!userManager) {
+    ws.send(JSON.stringify({
+      type: "login_response",
+      success: false,
+      message: "User management not available"
+    }));
+    return;
+  }
+
+  const { username, password } = msg;
+  
+  if (!username || !password) {
+    ws.send(JSON.stringify({
+      type: "login_response",
+      success: false,
+      message: "Username and password required"
+    }));
+    return;
+  }
+
+  const result = await userManager.authenticateUser(username, password);
+  
+  if (result.success) {
+    // Set user session on WebSocket
+    ws.username = username;
+    ws.sessionToken = result.sessionToken;
+    ws.userCharacter = result.character;
+    
+    console.log(`👤 User logged in: ${username}`);
+  }
+  
+  ws.send(JSON.stringify({
+    type: "login_response",
+    ...result,
+    // Don't send sessionToken to client for security
+    sessionToken: undefined
+  }));
+}
+
 async function handlePlayerConnect(ws, msg) {
   const playerId = sanitizeString(msg.playerId) || generateId();
-  const playerName = sanitizeString(msg.playerName) || "Anonymous";
+  // Use authenticated username if available, otherwise use provided name
+  const playerName = ws.username || sanitizeString(msg.playerName) || "Anonymous";
   
   ws.playerId = playerId;
   playerSessions.set(playerId, { ws, lastSeen: Date.now() });
   
+  // Add player to global game manager
+  if (globalGameManager) {
+    const welcomeData = globalGameManager.addPlayer(playerId, {
+      id: playerId,
+      name: playerName,
+      character: ws.userCharacter,
+      isAuthenticated: !!ws.username
+    });
+    
+    ws.send(JSON.stringify({
+      type: "player_connected",
+      playerId,
+      playerName,
+      character: ws.userCharacter || null,
+      isAuthenticated: !!ws.username,
+      globalRoom: welcomeData,
+      timestamp: Date.now()
+    }));
+    return;
+  }
+  
+  // Fallback for when global manager isn't available
   ws.send(JSON.stringify({
     type: "player_connected",
     playerId,
     playerName,
+    character: ws.userCharacter || null,
+    isAuthenticated: !!ws.username,
     timestamp: Date.now()
   }));
 }
@@ -401,6 +544,17 @@ async function handleCreateCharacter(ws, msg, ip) {
   room.lastActivity = Date.now();
   await saveRoom(room);
   
+  // Save character to user profile if authenticated
+  if (ws.username && userManager) {
+    try {
+      await userManager.saveUserCharacter(ws.username, character);
+      ws.userCharacter = character;
+      console.log(`💾 Character saved for user: ${ws.username}`);
+    } catch (error) {
+      console.error(`❌ Failed to save character for user ${ws.username}:`, error);
+    }
+  }
+  
   broadcast({
     type: "character_created",
     playerId: ws.playerId,
@@ -458,64 +612,33 @@ async function handleUpdateCharacter(ws, msg, ip) {
 }
 
 async function handlePlayerAction(ws, msg, ip) {
-  if (!ws.roomId || !msg.action) return;
-  
-  const room = await loadRoom(ws.roomId);
-  if (!room) return;
-  
-  const player = room.players.find(p => p.id === ws.playerId);
-  if (!player) return;
-  
-  // Allow actions even without character for drop-in gameplay
-  const characterName = player.character?.name || player.name || "Anonymous Adventurer";
+  if (!globalGameManager || !ws.playerId || !msg.action) {
+    ws.send(JSON.stringify({
+      type: "action_error",
+      message: "Global server not available or invalid action"
+    }));
+    return;
+  }
   
   const action = sanitizeString(msg.action, 500);
   
-  // Log action in chat
-  const chatMessage = {
-    id: generateId(),
-    playerId: ws.playerId,
-    playerName: characterName,
-    type: "action",
-    content: `${characterName} ${action}`,
-    timestamp: Date.now()
-  };
+  // Submit action to global game manager
+  const result = globalGameManager.addPlayerAction(ws.playerId, action);
   
-  room.gameState.chatLog.push(chatMessage);
-  
-  // If AI DM is enabled, process the action
-  if (room.settings.useAIDM) {
-    const characterForAction = player.character || { name: characterName };
-    const dmResponse = await processAIAction(room, characterForAction, action, player);
-    
-    if (dmResponse) {
-      const dmMessage = {
-        id: generateId(),
-        playerId: "dm",
-        playerName: "DM",
-        type: "system",
-        content: dmResponse,
-        timestamp: Date.now()
-      };
-      room.gameState.chatLog.push(dmMessage);
-    }
+  if (result.success) {
+    ws.send(JSON.stringify({
+      type: "action_submitted",
+      message: "Action queued for next DM update",
+      action: action,
+      timestamp: Date.now()
+    }));
+  } else {
+    ws.send(JSON.stringify({
+      type: "action_error",
+      message: result.message,
+      timestamp: Date.now()
+    }));
   }
-  
-  room.lastActivity = Date.now();
-  await saveRoom(room);
-  
-  broadcast({
-    type: "action_processed",
-    action: chatMessage,
-    dmResponse: room.settings.useAIDM ? room.gameState.chatLog[room.gameState.chatLog.length - 1] : null,
-    timestamp: Date.now()
-  }, ws.roomId);
-  
-  // Schedule timed NPC interactions after player action
-  scheduleNPCInteraction(room.id);
-  
-  // Schedule DM story updates
-  scheduleDMUpdate(room.id);
 }
 
 async function handleDiceRoll(ws, msg, ip) {
