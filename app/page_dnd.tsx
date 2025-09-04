@@ -39,6 +39,16 @@ export default function DnDPlatform() {
     useAIDM: true
   });
 
+  // Debug tracking for AI prompts and responses
+  const [debugPrompts, setDebugPrompts] = useState<Array<{
+    id: string;
+    type: 'user_input' | 'ai_response';
+    content: string;
+    timestamp: number;
+    turnId: string;
+    processed: boolean;
+  }>>([]);
+
   const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
   
   const {
@@ -122,6 +132,40 @@ export default function DnDPlatform() {
       dispatch({ type: 'SET_PHASE', payload: 'login' });
     }
   }, [status, playerId, userCharacter, dispatch]);
+
+  // Track AI responses from DM messages for debugging
+  useEffect(() => {
+    if (chatMessages.length > 0) {
+      const latestMessage = chatMessages[chatMessages.length - 1];
+      if (latestMessage.playerName === 'DM' && latestMessage.type === 'system') {
+        const currentTurnId = `turn_${globalServerState.turnStartTime}`;
+        setDebugPrompts(prev => {
+          // Check if this response is already tracked
+          const exists = prev.find(p => p.content === latestMessage.content && p.type === 'ai_response');
+          if (!exists) {
+            // Mark the most recent unprocessed user input as processed
+            const updatedPrompts = prev.map(prompt => {
+              if (prompt.type === 'user_input' && !prompt.processed && prompt.turnId === currentTurnId) {
+                return { ...prompt, processed: true };
+              }
+              return prompt;
+            });
+            
+            // Add the AI response
+            return [...updatedPrompts, {
+              id: `response_${Date.now()}`,
+              type: 'ai_response',
+              content: latestMessage.content,
+              timestamp: latestMessage.timestamp,
+              turnId: currentTurnId,
+              processed: true
+            }];
+          }
+          return prev;
+        });
+      }
+    }
+  }, [chatMessages, globalServerState.turnStartTime]);
 
   const handleLogin = () => {
     if (playerName.trim()) {
@@ -230,6 +274,17 @@ export default function DnDPlatform() {
   const handleSendAction = async () => {
     if (actionInput.trim() && !hasPlayerActedThisTurn && globalServerState.turnPhase === 'player_turns') {
       try {
+        // Track user input for debugging
+        const currentTurnId = `turn_${globalServerState.turnStartTime}`;
+        setDebugPrompts(prev => [...prev, {
+          id: `input_${Date.now()}`,
+          type: 'user_input',
+          content: actionInput.trim(),
+          timestamp: Date.now(),
+          turnId: currentTurnId,
+          processed: false
+        }]);
+
         await sendPlayerAction(actionInput.trim());
         setActionInput('');
         setHasPlayerActedThisTurn(true);
@@ -966,6 +1021,67 @@ export default function DnDPlatform() {
                     <span className="text-purple-400 capitalize">{state.activeModal.replace('-', ' ')}</span>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* AI Debug Section */}
+            <div className="bg-gray-900 p-4 rounded-lg border border-yellow-600/30">
+              <h3 className="font-semibold mb-3 text-yellow-400">🔍 AI Debug Tracker</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
+                <div className="text-gray-400 mb-2">
+                  Current Turn: turn_{globalServerState.turnStartTime}
+                </div>
+                {debugPrompts.length === 0 ? (
+                  <div className="text-gray-500 italic">No prompts tracked yet</div>
+                ) : (
+                  debugPrompts.slice(-10).map((prompt) => {
+                    const isCurrentTurn = prompt.turnId === `turn_${globalServerState.turnStartTime}`;
+                    return (
+                      <div 
+                        key={prompt.id} 
+                        className={`p-2 rounded text-xs ${
+                          prompt.type === 'user_input' 
+                            ? 'bg-blue-900/30 border-l-2 border-blue-500' 
+                            : 'bg-purple-900/30 border-l-2 border-purple-500'
+                        } ${isCurrentTurn ? 'ring-1 ring-yellow-500' : ''}`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`font-medium ${
+                            prompt.type === 'user_input' ? 'text-blue-400' : 'text-purple-400'
+                          }`}>
+                            {prompt.type === 'user_input' ? '📤 User Input' : '🤖 AI Response'}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-500">
+                              {new Date(prompt.timestamp).toLocaleTimeString('en-US', { 
+                                hour: '2-digit', 
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: false
+                              })}
+                            </span>
+                            {isCurrentTurn && <span className="text-yellow-400 text-xs">CURRENT</span>}
+                            {!prompt.processed && prompt.type === 'user_input' && 
+                              <span className="text-red-400 text-xs">NOT PROCESSED</span>
+                            }
+                          </div>
+                        </div>
+                        <div className="text-gray-300 break-words">
+                          {prompt.content.substring(0, 100)}
+                          {prompt.content.length > 100 && '...'}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Turn: {prompt.turnId.replace('turn_', '').substring(0, 8)}...
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-400">
+                Inputs: {debugPrompts.filter(p => p.type === 'user_input').length} | 
+                Responses: {debugPrompts.filter(p => p.type === 'ai_response').length} | 
+                Unprocessed: {debugPrompts.filter(p => p.type === 'user_input' && !p.processed).length}
               </div>
             </div>
 
