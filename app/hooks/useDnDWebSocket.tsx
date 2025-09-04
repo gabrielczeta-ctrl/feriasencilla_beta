@@ -334,11 +334,12 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         console.log('💰 Loot generated:', message.loot);
         setChatMessages(prev => [...prev, {
           id: `loot_${Date.now()}`,
+          playerId: 'dm',
           content: `🎁 Treasure discovered! ${message.loot.currency?.gold || 0} gold pieces and ${message.loot.equipment?.length || 0} items found!`,
           playerName: 'DM',
           type: 'system',
           timestamp: Date.now()
-        }]);
+        } as ChatMessage]);
         break;
 
       case 'chat_message':
