@@ -118,6 +118,25 @@ export default function DnDPlatform() {
     }
   }, []);
 
+  // Auto-connect to WebSocket server for authentication
+  useEffect(() => {
+    if (status === 'disconnected' && state.phase === 'login') {
+      console.log('🔄 Auto-connecting to server for authentication...');
+      // Connect with a temporary name for authentication
+      connect('temp-user-for-auth');
+    }
+  }, [status, state.phase, connect]);
+
+  // Send character to server when connection is established for guest users
+  useEffect(() => {
+    if (status === 'connected' && state.playerCharacter && state.phase === 'playing' && !isAuthenticated) {
+      console.log('🐾 Sending guest character to server:', state.playerCharacter.name);
+      createCharacter(state.playerCharacter).catch(error => {
+        console.error('❌ Failed to send guest character to server:', error);
+      });
+    }
+  }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter]);
+
   // Auto-refresh rooms when in lobby
   useEffect(() => {
     if (state.phase === 'lobby' && status === 'connected') {
@@ -194,16 +213,17 @@ export default function DnDPlatform() {
   const handleGuestLogin = async () => {
     if (playerName.trim()) {
       localStorage.setItem('dnd_player_name', playerName.trim());
-      connect(playerName.trim());
       
       // Generate random critter character for guests
       const critterCharacter = generateRandomCritter(playerName.trim());
       
       // Store locally and set in state
       dispatch({ type: 'SET_CHARACTER', payload: critterCharacter });
-      dispatch({ type: 'SET_PHASE', payload: 'playing' });
-      
       console.log(`🐾 Generated guest critter: ${critterCharacter.name} (${critterCharacter.race})`);
+      
+      // Start connection and proceed to playing phase
+      dispatch({ type: 'SET_PHASE', payload: 'playing' });
+      connect(playerName.trim());
     }
   };
 
