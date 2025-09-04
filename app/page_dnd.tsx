@@ -595,12 +595,12 @@ export default function DnDPlatform() {
               >
                 {state.showHUD ? '🎮 HUD ON' : '🎮 HUD OFF'}
               </button>
-              {isDM && (
+              {currentRoom && currentRoom.players.find(p => p.id === playerId)?.role === 'dm' && (
                 <button
                   onClick={() => {
                     if (window.confirm('⚠️ DELETE SERVER: This will permanently delete the entire campaign and all data. Are you absolutely sure?')) {
                       // TODO: Implement server deletion
-                      console.log('🗑️ DELETE SERVER requested for room:', currentRoom.id);
+                      console.log('🗑️ DELETE SERVER requested for room:', currentRoom?.id);
                       alert('🚧 Server deletion functionality coming soon!');
                     }
                   }}
@@ -627,7 +627,7 @@ export default function DnDPlatform() {
             <div className="bg-gray-900 p-6 rounded-lg">
               <h2 className="text-xl font-semibold mb-3">Current Scene</h2>
               <p className="text-gray-300 leading-relaxed">
-                {currentRoom.gameState.story.sceneDescription || "The adventure awaits..."}
+                {currentRoom?.gameState?.story?.sceneDescription || "The adventure awaits..."}
               </p>
             </div>
 
@@ -937,9 +937,9 @@ export default function DnDPlatform() {
 
             {/* Party */}
             <div className="bg-gray-900 p-4 rounded-lg">
-              <h3 className="font-semibold mb-3">Party ({currentRoom.players.length})</h3>
+              <h3 className="font-semibold mb-3">Party ({currentRoom?.players?.length || 0})</h3>
               <div className="space-y-2">
-                {currentRoom.players.map((player) => (
+                {currentRoom?.players?.map((player) => (
                   <div key={player.id} className="flex items-center justify-between text-sm">
                     <span className={player.isOnline ? 'text-white' : 'text-gray-400'}>
                       {player.character?.name || player.name}
