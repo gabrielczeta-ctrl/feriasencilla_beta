@@ -175,31 +175,76 @@ export class GlobalGameManager {
         .map(msg => `${msg.playerName}: ${msg.content}`)
         .join('\n');
 
-      // Generate DM response
-      const dmResponse = await this.claudeDM.generateDMResponse({
+      // Process player actions with Claude DM
+      const latestAction = this.globalRoom.gameState.messageQueue[0]; // Get the first action
+      const actingPlayer = this.globalRoom.players.get(latestAction.playerId);
+      
+      const dmResponse = await this.claudeDM.processPlayerAction({
+        playerInput: latestAction.content,
         currentScene: this.globalRoom.gameState.currentScene,
-        recentContext,
-        playerActions,
-        players: Array.from(this.globalRoom.players.values()).map(p => p.character).filter(Boolean)
+        players: Array.from(this.globalRoom.players.values()).map(p => ({ 
+          id: p.id, 
+          name: p.name, 
+          character: p.character 
+        })).filter(p => p.character),
+        gameState: {
+          storyContext: this.globalRoom.gameState.storyContext,
+          currentScene: this.globalRoom.gameState.currentScene
+        },
+        roomId: this.globalRoom.id,
+        actingPlayer: actingPlayer ? {
+          id: actingPlayer.id,
+          name: actingPlayer.name,
+          character: actingPlayer.character
+        } : null
       });
 
       // Create DM story message
-      const dmMessage = {
-        type: 'story_message',
-        content: dmResponse.story || 'The story continues as the tavern hums with activity...',
-        location: dmResponse.location || this.globalRoom.gameState.currentScene,
-        availableActions: dmResponse.availableActions || [],
-        npcs: dmResponse.npcs || [],
-        timestamp: Date.now(),
-        playerName: 'DM'
-      };
+      let dmMessage;
+      if (dmResponse && dmResponse.narration) {
+        dmMessage = {
+          type: 'story_message',
+          content: dmResponse.narration,
+          location: dmResponse.sceneUpdate?.newLocation || this.globalRoom.gameState.currentScene,
+          availableActions: dmResponse.sceneUpdate?.availableActions || [
+            'Continue exploring the tavern',
+            'Talk to other adventurers', 
+            'Order a drink',
+            'Rest by the fireplace'
+          ],
+          npcs: dmResponse.npcResponse ? [dmResponse.npcResponse] : [],
+          timestamp: Date.now(),
+          playerName: 'DM'
+        };
+
+        console.log('✅ Real Claude response received:', dmResponse.narration?.slice(0, 100) + '...');
+      } else {
+        // Fallback message when Claude doesn't respond
+        dmMessage = {
+          type: 'story_message',
+          content: 'The story continues as the tavern hums with activity...',
+          location: this.globalRoom.gameState.currentScene,
+          availableActions: [
+            'Continue exploring the tavern',
+            'Talk to other adventurers', 
+            'Order a drink',
+            'Rest by the fireplace'
+          ],
+          npcs: [],
+          timestamp: Date.now(),
+          playerName: 'DM'
+        };
+
+        console.log('⚠️ Using fallback response - Claude DM may not be working properly');
+      }
 
       // Add to story context
       this.globalRoom.gameState.storyContext.push(dmMessage);
       
-      // Update current scene
-      if (dmResponse.location) {
-        this.globalRoom.gameState.currentScene = dmResponse.location;
+      // Update current scene if Claude provided a new one
+      if (dmResponse && dmResponse.sceneUpdate?.newLocation) {
+        this.globalRoom.gameState.currentScene = dmResponse.sceneUpdate.newLocation;
+        console.log('🏛️ Scene updated to:', dmResponse.sceneUpdate.newLocation);
       }
 
       // Broadcast DM response
