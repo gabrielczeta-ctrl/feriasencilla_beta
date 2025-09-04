@@ -641,7 +641,9 @@ export default function DnDPlatform() {
                   onChange={(e) => setActionInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
                   placeholder={
-                    hasPlayerActedThisTurn 
+                    !userCharacter
+                      ? "Create a character first to participate in the adventure..."
+                      : hasPlayerActedThisTurn 
                       ? "You've already acted this turn. Wait for DM response..." 
                       : globalServerState.turnPhase !== 'player_turns'
                         ? "Wait for your turn to send actions..."
@@ -649,26 +651,29 @@ export default function DnDPlatform() {
                   }
                   className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
                   maxLength={500}
-                  disabled={hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                  disabled={!userCharacter || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
                 />
                 <button
                   onClick={handleSendAction}
                   disabled={
+                    !userCharacter ||
                     !actionInput.trim() || 
                     hasPlayerActedThisTurn || 
                     globalServerState.turnPhase !== 'player_turns'
                   }
                   className={`px-6 py-3 rounded transition-colors font-semibold ${
-                    hasPlayerActedThisTurn
-                      ? 'bg-green-600 text-white cursor-default'
-                      : globalServerState.turnPhase !== 'player_turns'
-                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : actionInput.trim()
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                          : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    !userCharacter
+                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      : hasPlayerActedThisTurn
+                        ? 'bg-green-600 text-white cursor-default'
+                        : globalServerState.turnPhase !== 'player_turns'
+                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                          : actionInput.trim()
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   }`}
                 >
-                  {hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Send'}
+                  {!userCharacter ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Send'}
                 </button>
               </div>
             </div>
@@ -773,19 +778,30 @@ export default function DnDPlatform() {
                     👤 Profile
                   </button>
                   <button
-                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'character-sheet' })}
-                    className="flex-1 p-2 bg-gray-800 hover:bg-gray-700 rounded transition-colors text-sm"
+                    onClick={() => {
+                      if (userCharacter.hitPoints.current > 0) {
+                        alert('🚫 You can only edit your character sheet if your character has died (0 HP)');
+                        return;
+                      }
+                      dispatch({ type: 'SET_MODAL', payload: 'character-sheet' });
+                    }}
+                    className={`flex-1 p-2 rounded transition-colors text-sm ${
+                      userCharacter.hitPoints.current > 0 
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 hover:bg-gray-700 text-white'
+                    }`}
+                    title={userCharacter.hitPoints.current > 0 ? 'Character must die (0 HP) to edit sheet' : 'Edit character sheet'}
                   >
-                    📄 Edit Sheet
+                    {userCharacter.hitPoints.current > 0 ? '🔒 Locked' : '📄 Edit Sheet'}
                   </button>
                 </div>
                 
                 {/* Inventory Section */}
                 <div className="mt-4 space-y-2">
                   <h4 className="font-medium text-purple-400">🎒 Inventory</h4>
-                  {userCharacter.equipment && userCharacter.equipment.length > 0 ? (
+                  {userCharacter.equipment && (userCharacter.equipment?.length || 0) > 0 ? (
                     <div className="space-y-1">
-                      {userCharacter.equipment.slice(0, 5).map((item, index) => (
+                      {userCharacter.equipment?.slice(0, 5).map((item, index) => (
                         <div key={index} className="flex items-center justify-between text-xs bg-gray-800 p-2 rounded">
                           <div className="flex items-center space-x-2">
                             <span className={`w-2 h-2 rounded-full ${
@@ -807,9 +823,9 @@ export default function DnDPlatform() {
                           </button>
                         </div>
                       ))}
-                      {userCharacter.equipment.length > 5 && (
+                      {(userCharacter.equipment?.length || 0) > 5 && (
                         <div className="text-xs text-gray-500 text-center">
-                          +{userCharacter.equipment.length - 5} more items
+                          +{(userCharacter.equipment?.length || 0) - 5} more items
                         </div>
                       )}
                     </div>
@@ -1084,11 +1100,11 @@ export default function DnDPlatform() {
                   </div>
                   
                   {/* Equipment */}
-                  {userCharacter.equipment && userCharacter.equipment.length > 0 && (
+                  {userCharacter.equipment && (userCharacter.equipment?.length || 0) > 0 && (
                     <div>
                       <h4 className="text-lg font-semibold mb-3 text-yellow-400">Equipment</h4>
                       <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {userCharacter.equipment.map((item, index) => (
+                        {userCharacter.equipment?.map((item, index) => (
                           <div key={index} className="flex items-center justify-between bg-gray-800 p-2 rounded text-sm">
                             <div className="flex items-center space-x-2">
                               <span className={`w-2 h-2 rounded-full ${

@@ -133,7 +133,7 @@ export default function DMUpdateTimer({
             {playersWhoActed}/{totalPlayers} players acted this turn
           </span>
           <span className="text-purple-400 font-medium">
-            ⏱️ Updates every 30s
+            ⏱️ Smart Updates {playersWhoActed > 0 ? 'every 15s' : 'reduced frequency'}
           </span>
         </div>
       </div>
