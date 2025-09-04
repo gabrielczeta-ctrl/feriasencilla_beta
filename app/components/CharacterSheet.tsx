@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Character, RACES, CLASSES, SKILLS, Race, Class, Skill } from '../types/dnd';
+import { generateRandomCharacter, convertTemplateToCharacter } from '../utils/randomCharacterGenerator';
 
 interface CharacterSheetProps {
   character?: Partial<Character>;
@@ -136,6 +137,34 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
     return hitDie + conModifier + ((formData.level! - 1) * (Math.floor(hitDie / 2) + 1 + conModifier));
   };
 
+  const handleRandomize = () => {
+    const randomTemplate = generateRandomCharacter();
+    const randomCharacter = convertTemplateToCharacter(randomTemplate, 'temp');
+    
+    setFormData({
+      name: randomCharacter.name,
+      race: randomCharacter.race,
+      class: randomCharacter.class,
+      level: randomCharacter.level,
+      stats: randomCharacter.stats,
+      hitPoints: {
+        current: randomCharacter.hitPoints.maximum,
+        maximum: randomCharacter.hitPoints.maximum,
+        temporary: 0
+      },
+      armorClass: randomCharacter.armorClass,
+      backstory: randomCharacter.backstory,
+      skills: randomCharacter.skills,
+      equipment: randomCharacter.equipment
+    });
+
+    // Recalculate remaining points for point buy system
+    const totalSpent = Object.values(randomCharacter.stats).reduce((sum, score) => sum + getPointCost(score), 0);
+    setRemainingPoints(Math.max(0, 27 - totalSpent));
+    
+    console.log(`🎲 Generated random character: ${randomCharacter.name} the ${randomCharacter.race} ${randomCharacter.class}`);
+  };
+
   return (
     <div className="w-full max-w-6xl mx-auto bg-gray-900 text-white p-4 sm:p-6 rounded-lg max-h-[90vh] overflow-y-auto"
          style={{ minHeight: 'auto' }}>
@@ -144,6 +173,13 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
           {isEditing ? 'Edit Character' : 'Create Character'}
         </h2>
         <div className="flex gap-4">
+          <button
+            onClick={handleRandomize}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded transition-colors font-semibold"
+            title="Generate a completely random character with optimized stats"
+          >
+            🎲 Randomize!
+          </button>
           {onCancel && (
             <button
               onClick={onCancel}

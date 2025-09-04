@@ -20,7 +20,18 @@ export class GlobalGameManager {
         lastDMUpdate: Date.now(),
         turnPhase: 'player_turns', // 'player_turns' | 'dm_processing' | 'dm_response'
         turnStartTime: Date.now(),
-        playersWhoActed: new Set(), // Players who sent message this turn
+        playersWhoActed: new Set(), // Players who sent message this turn,
+        // Server-controlled tactical map
+        battleMap: {
+          active: false, // Is tactical combat active?
+          gridSize: { width: 20, height: 20 }, // 20x20 grid
+          terrain: [], // 2D array of terrain types
+          playerPositions: new Map(), // playerId -> {x, y, conditions, facing}
+          enemies: new Map(), // enemyId -> {x, y, hp, ac, name, type}
+          hazards: new Map(), // hazardId -> {x, y, type, damage, description}
+          lighting: 'normal', // 'bright', 'dim', 'darkness'
+          weather: 'clear', // DM-controlled environmental conditions
+        }
       },
       settings: {
         playerTurnDuration: 15000, // 15 seconds for player input
@@ -35,6 +46,7 @@ export class GlobalGameManager {
     this.clients = new Set();
 
     this.initializeGlobalRoom();
+    this.initializeBattleMap();
     this.startGameLoop();
   }
 
@@ -475,6 +487,186 @@ export class GlobalGameManager {
 
   removeClient(ws) {
     this.clients.delete(ws);
+  }
+
+  // Server-side map management methods
+  initializeBattleMap() {
+    const { battleMap } = this.globalRoom.gameState;
+    
+    // Initialize terrain grid
+    battleMap.terrain = Array(battleMap.gridSize.height).fill(null)
+      .map(() => Array(battleMap.gridSize.width).fill('normal'));
+    
+    // Place some interesting terrain in the tavern
+    this.setupTavernTerrain();
+    
+    console.log('🗺️ Battle map initialized:', `${battleMap.gridSize.width}x${battleMap.gridSize.height} grid`);
+  }
+
+  setupTavernTerrain() {
+    const { terrain, gridSize } = this.globalRoom.gameState.battleMap;
+    
+    // Add some tavern furniture and features
+    // Tables (difficult terrain)
+    terrain[5][8] = terrain[5][9] = 'difficult'; // Table 1
+    terrain[12][6] = terrain[12][7] = 'difficult'; // Table 2
+    terrain[15][15] = terrain[15][16] = 'difficult'; // Table 3
+    
+    // Walls (blocked terrain)
+    for (let x = 0; x < gridSize.width; x++) {
+      terrain[0][x] = 'blocked'; // North wall
+      terrain[gridSize.height - 1][x] = 'blocked'; // South wall
+    }
+    for (let y = 0; y < gridSize.height; y++) {
+      terrain[y][0] = 'blocked'; // West wall
+      terrain[y][gridSize.width - 1] = 'blocked'; // East wall
+    }
+    
+    // Fireplace (hazard)
+    this.globalRoom.gameState.battleMap.hazards.set('fireplace', {
+      x: 18, y: 10,
+      type: 'fire',
+      damage: '1d4 fire',
+      description: 'A warm fireplace crackles with magical flames'
+    });
+
+    // Bar counter (difficult terrain)
+    for (let x = 2; x < 8; x++) {
+      terrain[2][x] = 'difficult';
+    }
+  }
+
+  addPlayerToMap(playerId, character) {
+    const { battleMap } = this.globalRoom.gameState;
+    
+    if (!battleMap.playerPositions.has(playerId)) {
+      // Find a safe starting position (avoiding walls and hazards)
+      let startX = 10, startY = 10;
+      
+      // Try to find an empty spot near the center
+      for (let attempts = 0; attempts < 10; attempts++) {
+        startX = 5 + Math.floor(Math.random() * 10);
+        startY = 5 + Math.floor(Math.random() * 10);
+        
+        if (battleMap.terrain[startY] && battleMap.terrain[startY][startX] !== 'blocked') {
+          break;
+        }
+      }
+      
+      battleMap.playerPositions.set(playerId, {
+        x: startX,
+        y: startY,
+        conditions: [],
+        facing: 'north',
+        character: {
+          name: character?.name || 'Adventurer',
+          class: character?.class || 'Fighter',
+          hp: character?.hitPoints || { current: 25, maximum: 25 },
+          ac: character?.armorClass || 15
+        }
+      });
+
+      console.log(`🚶 Player ${character?.name || playerId} positioned at (${startX}, ${startY})`);
+      this.broadcastMapUpdate();
+    }
+  }
+
+  validateMovement(playerId, fromX, fromY, toX, toY) {
+    const { battleMap } = this.globalRoom.gameState;
+    const { terrain, gridSize, playerPositions, enemies } = battleMap;
+    
+    // Check bounds
+    if (toX < 0 || toX >= gridSize.width || toY < 0 || toY >= gridSize.height) {
+      return { valid: false, reason: 'Out of bounds' };
+    }
+    
+    // Check terrain
+    if (terrain[toY][toX] === 'blocked') {
+      return { valid: false, reason: 'Blocked by terrain' };
+    }
+    
+    // Check if another player is in the target position
+    for (const [otherId, pos] of playerPositions) {
+      if (otherId !== playerId && pos.x === toX && pos.y === toY) {
+        return { valid: false, reason: 'Space occupied by another player' };
+      }
+    }
+    
+    // Check if an enemy is in the target position
+    for (const [enemyId, enemy] of enemies) {
+      if (enemy.x === toX && enemy.y === toY) {
+        return { valid: false, reason: 'Space occupied by enemy' };
+      }
+    }
+    
+    // Calculate movement distance (using grid distance)
+    const distance = Math.abs(toX - fromX) + Math.abs(toY - fromY);
+    const movementCost = terrain[toY][toX] === 'difficult' ? distance * 2 : distance;
+    
+    return {
+      valid: true,
+      distance: distance,
+      cost: movementCost,
+      terrain: terrain[toY][toX]
+    };
+  }
+
+  movePlayer(playerId, toX, toY) {
+    const { battleMap } = this.globalRoom.gameState;
+    const playerPos = battleMap.playerPositions.get(playerId);
+    
+    if (!playerPos) {
+      return { success: false, reason: 'Player not found on map' };
+    }
+    
+    const validation = this.validateMovement(playerId, playerPos.x, playerPos.y, toX, toY);
+    
+    if (!validation.valid) {
+      return { success: false, reason: validation.reason };
+    }
+    
+    // Update position
+    playerPos.x = toX;
+    playerPos.y = toY;
+    
+    console.log(`🚶 Player ${playerId} moved to (${toX}, ${toY})`);
+    
+    // Broadcast map update to all clients
+    this.broadcastMapUpdate();
+    
+    return { 
+      success: true, 
+      newPosition: { x: toX, y: toY },
+      cost: validation.cost,
+      terrain: validation.terrain
+    };
+  }
+
+  broadcastMapUpdate() {
+    this.broadcastToAll({
+      type: 'map_state_update',
+      mapState: {
+        battleMap: this.globalRoom.gameState.battleMap,
+        // Convert Maps to objects for JSON serialization
+        playerPositions: Object.fromEntries(this.globalRoom.gameState.battleMap.playerPositions),
+        enemies: Object.fromEntries(this.globalRoom.gameState.battleMap.enemies),
+        hazards: Object.fromEntries(this.globalRoom.gameState.battleMap.hazards)
+      },
+      timestamp: Date.now()
+    });
+  }
+
+  // DM can activate tactical combat mode
+  activateTacticalMode() {
+    this.globalRoom.gameState.battleMap.active = true;
+    console.log('⚔️ Tactical combat mode activated');
+    this.broadcastMapUpdate();
+  }
+
+  deactivateTacticalMode() {
+    this.globalRoom.gameState.battleMap.active = false;
+    console.log('🕊️ Tactical combat mode deactivated');
+    this.broadcastMapUpdate();
   }
 
   // Get current game statistics

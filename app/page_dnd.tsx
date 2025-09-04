@@ -13,6 +13,7 @@ import DMUpdateTimer from './components/DMUpdateTimer';
 import EnhancedMovementHUD from './components/EnhancedMovementHUD';
 import CombatManager from './components/CombatManager';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
+import { generateRandomCritter, convertToAnimalSpeak, isGuestCritter } from './utils/animalCritters';
 
 export default function DnDPlatform() {
   const { state, dispatch } = useGameState();
@@ -134,18 +135,25 @@ export default function DnDPlatform() {
   // Update game state based on current room state - Global Server Mode
   useEffect(() => {
     if (status === 'connected' && playerId) {
-      // Global server: players can play without characters or create one if they want
-      if (userCharacter) {
-        dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
+      // Check if we already have a character from local state or server
+      if (state.character || userCharacter) {
+        // Use local character (for guests) or server character (for authenticated users)
+        const character = state.character || userCharacter;
+        if (character && !state.character) {
+          dispatch({ type: 'SET_CHARACTER', payload: character });
+        }
         dispatch({ type: 'SET_PHASE', payload: 'playing' });
-      } else {
-        // No character yet - show character creation
+      } else if (isAuthenticated) {
+        // Authenticated user without character - show character creation
         dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
+      } else {
+        // Guest already has a critter character generated at login
+        dispatch({ type: 'SET_PHASE', payload: 'playing' });
       }
     } else if (status === 'disconnected') {
       dispatch({ type: 'SET_PHASE', payload: 'login' });
     }
-  }, [status, playerId, userCharacter, dispatch]);
+  }, [status, playerId, userCharacter, isAuthenticated, state.character, dispatch]);
 
   // Track AI responses for debugging
   useEffect(() => {
@@ -181,12 +189,39 @@ export default function DnDPlatform() {
     }
   }, [chatMessages, globalServerState.turnStartTime]);
 
-  const handleLogin = () => {
+  const handleGuestLogin = async () => {
     if (playerName.trim()) {
       localStorage.setItem('dnd_player_name', playerName.trim());
       connect(playerName.trim());
-      // Skip lobby and go straight to global server
+      
+      // Generate random critter character for guests
+      const critterCharacter = generateRandomCritter(playerName.trim());
+      
+      // Store locally and set in state
+      dispatch({ type: 'SET_CHARACTER', payload: critterCharacter });
       dispatch({ type: 'SET_PHASE', payload: 'playing' });
+      
+      console.log(`🐾 Generated guest critter: ${critterCharacter.name} (${critterCharacter.race})`);
+    }
+  };
+
+  const handleAuthenticatedLogin = async (username: string, password: string) => {
+    try {
+      await login(username, password);
+      setShowAuthModal(false);
+      // Will be handled by useEffect when userCharacter is available
+    } catch (error) {
+      throw error; // Let AuthModal handle the error
+    }
+  };
+
+  const handleRegistration = async (username: string, password: string) => {
+    try {
+      await register(username, password);
+      setShowAuthModal(false);
+      // After registration, show character creation
+    } catch (error) {
+      throw error; // Let AuthModal handle the error
     }
   };
 
@@ -290,8 +325,17 @@ export default function DnDPlatform() {
     
     if (actionInput.trim() && canAct) {
       try {
+        let processedAction = actionInput.trim();
+        
+        // Convert guest critter speech to animal sounds
+        const currentCharacter = state.character || userCharacter;
+        if (currentCharacter && isGuestCritter(currentCharacter)) {
+          processedAction = convertToAnimalSpeak(processedAction, currentCharacter.race);
+          console.log(`🐾 Converted guest action: "${actionInput.trim()}" → "${processedAction}"`);
+        }
+        
         // Send action directly to server instead of using conflicting state managers
-        await sendPlayerAction(actionInput.trim());
+        await sendPlayerAction(processedAction);
         setActionInput('');
         setHasPlayerActedThisTurn(true);
         
@@ -300,13 +344,13 @@ export default function DnDPlatform() {
         setDebugPrompts(prev => [...prev, {
           id: `input_${Date.now()}`,
           type: 'user_input',
-          content: `[ACTION] ${actionInput.trim()}`,
+          content: `[ACTION] ${processedAction}`,
           timestamp: Date.now(),
           turnId: currentTurnId,
           processed: false
         }]);
 
-        console.log('✅ Action sent to server:', actionInput.trim());
+        console.log('✅ Action sent to server:', processedAction);
       } catch (error) {
         console.error('❌ Failed to send action:', error);
         setHasPlayerActedThisTurn(false); // Reset on error
@@ -326,8 +370,17 @@ export default function DnDPlatform() {
     
     if (talkInput.trim() && canAct) {
       try {
+        let processedTalk = talkInput.trim();
+        
+        // Convert guest critter speech to animal sounds
+        const currentCharacter = state.character || userCharacter;
+        if (currentCharacter && isGuestCritter(currentCharacter)) {
+          processedTalk = convertToAnimalSpeak(processedTalk, currentCharacter.race);
+          console.log(`🐾 Converted guest dialogue: "${talkInput.trim()}" → "${processedTalk}"`);
+        }
+        
         // Send dialogue directly to server
-        await sendPlayerAction(`"${talkInput.trim()}"`);
+        await sendPlayerAction(`"${processedTalk}"`);
         setTalkInput('');
         setHasPlayerActedThisTurn(true);
         
@@ -336,13 +389,13 @@ export default function DnDPlatform() {
         setDebugPrompts(prev => [...prev, {
           id: `input_${Date.now()}`,
           type: 'user_input',
-          content: `[TALK] ${talkInput.trim()}`,
+          content: `[TALK] ${processedTalk}`,
           timestamp: Date.now(),
           turnId: currentTurnId,
           processed: false
         }]);
 
-        console.log('✅ Dialogue sent to server:', talkInput.trim());
+        console.log('✅ Dialogue sent to server:', processedTalk);
       } catch (error) {
         console.error('❌ Failed to send dialogue:', error);
         setHasPlayerActedThisTurn(false); // Reset on error
@@ -405,11 +458,11 @@ export default function DnDPlatform() {
             />
             
             <button
-              onClick={handleLogin}
+              onClick={handleGuestLogin}
               disabled={!playerName.trim() || status === 'connecting'}
               className="w-full p-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 text-white rounded font-semibold transition-colors"
             >
-              {status === 'connecting' ? 'Connecting...' : 'Enter the Realm'}
+              {status === 'connecting' ? 'Connecting...' : '🐾 Enter as Guest Critter'}
             </button>
 
             <div className="relative">
@@ -425,7 +478,7 @@ export default function DnDPlatform() {
               onClick={() => setShowAuthModal(true)}
               className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded font-semibold transition-colors"
             >
-              🔐 Login with Account
+              🔐 Login / Register Account
             </button>
           </div>
 
@@ -440,6 +493,13 @@ export default function DnDPlatform() {
             </div>
           </div>
         </motion.div>
+        
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onLogin={handleAuthenticatedLogin}
+          onRegister={handleRegistration}
+        />
       </div>
     );
   }
