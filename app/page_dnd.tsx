@@ -173,7 +173,10 @@ export default function DnDPlatform() {
   // Update game state based on WebSocket connection status
   useEffect(() => {
     if (status === 'disconnected') {
+      // Clear all game state when disconnected
+      dispatch({ type: 'SET_CHARACTER', payload: null });
       dispatch({ type: 'SET_PHASE', payload: 'login' });
+      console.log('🔄 Connection lost - returned to login screen');
     }
     // Don't auto-transition to playing phase - let other useEffects handle proper flow
   }, [status, dispatch]);
@@ -216,11 +219,25 @@ export default function DnDPlatform() {
     if (playerName.trim()) {
       localStorage.setItem('dnd_player_name', playerName.trim());
       
-      // Connect first, then let the user choose character type
-      connect(playerName.trim());
-      // Phase will remain 'login' until connection is established
-      // Then useEffect will handle the proper flow based on authentication state
+      // Ensure clean state before connecting
+      console.log('🔄 Starting fresh connection for:', playerName.trim());
+      disconnect(); // Clean up any existing connection
+      
+      setTimeout(() => {
+        // Connect first, then let the user choose character type
+        connect(playerName.trim());
+        // Phase will remain 'login' until connection is established
+        // Then useEffect will handle the proper flow based on authentication state
+      }, 100);
     }
+  };
+
+  const handleForceReset = () => {
+    console.log('🔄 Forcing connection reset...');
+    disconnect();
+    setPlayerName('');
+    localStorage.removeItem('dnd_player_name');
+    dispatch({ type: 'RESET_STATE' });
   };
 
   const handleAuthenticatedLogin = async (username: string, password: string) => {
@@ -512,7 +529,7 @@ export default function DnDPlatform() {
             </button>
           </div>
 
-          <div className="mt-4 text-center">
+          <div className="mt-4 text-center space-y-2">
             <div className={`inline-flex items-center gap-2 text-sm ${
               status === 'connected' ? 'text-green-400' : 
               status === 'connecting' ? 'text-yellow-400' : 'text-red-400'
@@ -521,6 +538,15 @@ export default function DnDPlatform() {
               {status === 'connected' ? 'Connected' : 
                status === 'connecting' ? 'Connecting...' : 'Disconnected'}
             </div>
+            
+            {process.env.NODE_ENV === 'development' && (
+              <button
+                onClick={handleForceReset}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+              >
+                🔄 Reset Connection (Debug)
+              </button>
+            )}
           </div>
         </motion.div>
         

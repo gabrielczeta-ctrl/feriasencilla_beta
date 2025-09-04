@@ -119,18 +119,9 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         setStatus('disconnected');
         wsRef.current = null;
         
-        // Attempt to reconnect
-        if (reconnectAttempts.current < maxReconnectAttempts) {
-          reconnectAttempts.current++;
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`🔄 Reconnect attempt ${reconnectAttempts.current}/${maxReconnectAttempts} to ${wsUrl}`);
-            connect(playerName);
-          }, delay);
-        } else {
-          console.error('❌ Max reconnection attempts reached. Connection failed.');
-        }
+        // Don't automatically reconnect - let user manually reconnect to avoid stale playerName issues
+        console.log('🔌 Connection lost. Please reconnect manually to ensure proper player identification.');
+        reconnectAttempts.current = 0;
       };
 
       ws.onerror = (error) => {
@@ -146,21 +137,32 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   }, [wsUrl, status, playerId]);
 
   const disconnect = useCallback(() => {
+    console.log('🔌 Disconnecting WebSocket connection...');
+    
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
     if (wsRef.current) {
-      wsRef.current.close();
+      wsRef.current.close(1000, 'Client disconnect');
       wsRef.current = null;
     }
     
+    // Reset all state
     setStatus('disconnected');
     setPlayerId(null);
     setCurrentRoom(null);
     setChatMessages([]);
     setDiceRolls([]);
+    setIsAuthenticated(false);
+    setUserCharacter(null);
+    setGlobalServerState(null);
+    
+    // Reset reconnection attempts
+    reconnectAttempts.current = 0;
+    
+    console.log('✅ WebSocket disconnected and state cleared');
   }, []);
 
   const sendMessage = useCallback((message: any) => {
