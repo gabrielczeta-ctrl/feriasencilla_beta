@@ -623,8 +623,6 @@ export default function DnDPlatform() {
 
   // Playing Phase
   if (state.phase === 'playing') {
-    // Global server mode - no current room needed
-
     return (
       <div className="min-h-screen text-white relative overflow-auto">
         <FireShaderBackground 
@@ -1478,5 +1476,6 @@ export default function DnDPlatform() {
     );
   }
 
+  }
   return null;
 }
