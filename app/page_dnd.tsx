@@ -680,17 +680,26 @@ export default function DnDPlatform() {
             <div className="bg-gray-900 p-6 rounded-lg">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xl font-semibold">Adventure Log</h2>
-                <button
-                  onClick={() => dispatch({ type: 'TOGGLE_CHAT_AUTO_SCROLL' })}
-                  className={`px-3 py-1 rounded text-sm transition-colors ${
-                    state.chatAutoScroll 
-                      ? 'bg-green-600 hover:bg-green-700' 
-                      : 'bg-gray-600 hover:bg-gray-500'
-                  }`}
-                  title={state.chatAutoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'}
-                >
-                  {state.chatAutoScroll ? '📜 Auto' : '📜 Manual'}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'current-context' })}
+                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
+                    title="View current game context and story"
+                  >
+                    📖 Context
+                  </button>
+                  <button
+                    onClick={() => dispatch({ type: 'TOGGLE_CHAT_AUTO_SCROLL' })}
+                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                      state.chatAutoScroll 
+                        ? 'bg-green-600 hover:bg-green-700' 
+                        : 'bg-gray-600 hover:bg-gray-500'
+                    }`}
+                    title={state.chatAutoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'}
+                  >
+                    {state.chatAutoScroll ? '📜 Auto' : '📜 Manual'}
+                  </button>
+                </div>
               </div>
               <div 
                 ref={chatContainerRef}
@@ -702,8 +711,19 @@ export default function DnDPlatform() {
                     message.type === 'dice' ? 'bg-green-900/30' :
                     'bg-gray-800'
                   }`}>
-                    <span className="font-semibold text-gray-300">{message.playerName}:</span>
-                    <span className="ml-2">{message.content}</span>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <span className="font-semibold text-gray-300">{message.playerName}:</span>
+                        <span className="ml-2">{message.content}</span>
+                      </div>
+                      <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
+                        {new Date(message.timestamp).toLocaleTimeString('en-US', { 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          hour12: false
+                        })}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1124,6 +1144,133 @@ export default function DnDPlatform() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Current Context Modal */}
+        <AnimatePresence>
+          {state.activeModal === 'current-context' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+              onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
+            >
+              <motion.div
+                initial={{ scale: 0.9 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.9 }}
+                onClick={(e) => e.stopPropagation()}
+                className="max-w-4xl w-full bg-gray-900 rounded-lg p-6 max-h-[80vh] overflow-y-auto"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold text-white">📖 Current Context</h2>
+                  <button
+                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
+                    className="text-gray-400 hover:text-white text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+                
+                <div className="space-y-6 text-white">
+                  {/* Current Scene */}
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-blue-400">🎭 Current Scene</h3>
+                    <p className="text-gray-300 leading-relaxed">
+                      {currentRoom?.gameState?.story?.sceneDescription || "You find yourself in The Eternal Tavern, a mystical gathering place where adventurers from across the realms come to share tales and embark on new quests."}
+                    </p>
+                  </div>
+
+                  {/* Location & Environment */}
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-green-400">📍 Location</h3>
+                    <p className="text-gray-300">
+                      <strong>Current Location:</strong> {currentRoom?.gameState?.story?.location || "The Eternal Tavern"}
+                    </p>
+                    <p className="text-gray-300 mt-2">
+                      <strong>Environment:</strong> A warm, inviting tavern filled with the aroma of hearty meals and the gentle hum of conversation. Magical lanterns cast a soft glow, and ancient artifacts line the walls.
+                    </p>
+                  </div>
+
+                  {/* Active Players */}
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-purple-400">👥 Active Adventurers</h3>
+                    <div className="space-y-2">
+                      {(currentRoom?.players || []).map((player) => (
+                        <div key={player.id} className="flex items-center justify-between bg-gray-700 p-2 rounded">
+                          <div className="flex items-center space-x-2">
+                            <div className={`w-2 h-2 rounded-full ${player.isOnline ? 'bg-green-400' : 'bg-gray-400'}`}></div>
+                            <span>{player.character?.name || player.name}</span>
+                            {player.id === playerId && <span className="text-yellow-400">(You)</span>}
+                          </div>
+                          <div className="text-sm text-gray-400">
+                            {player.character ? 
+                              `${player.character.race} ${player.character.class}` : 
+                              'No character created'
+                            }
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Game Status */}
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-yellow-400">⚡ Game Status</h3>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-gray-400">Turn Phase:</span>
+                        <span className="ml-2 text-white capitalize">{globalServerState.turnPhase.replace('_', ' ')}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Players Acting:</span>
+                        <span className="ml-2 text-white">{globalServerState.playersWhoActed}/{globalServerState.totalPlayers}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Your Status:</span>
+                        <span className="ml-2 text-white">
+                          {hasPlayerActedThisTurn ? '✅ Action Submitted' : '⏳ Awaiting Action'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Character:</span>
+                        <span className="ml-2 text-white">
+                          {userCharacter || state.playerCharacter ? '✅ Ready' : '❌ Not Created'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Recent Activity */}
+                  <div className="bg-gray-800 p-4 rounded-lg">
+                    <h3 className="text-lg font-semibold mb-3 text-red-400">📜 Recent Activity</h3>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {chatMessages.slice(-5).map((message) => (
+                        <div key={message.id} className="text-sm bg-gray-700 p-2 rounded">
+                          <span className="font-semibold text-gray-300">{message.playerName}:</span>
+                          <span className="ml-2 text-gray-400">{message.content}</span>
+                        </div>
+                      ))}
+                      {chatMessages.length === 0 && (
+                        <p className="text-gray-500 italic">No recent activity</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 text-center">
+                  <button
+                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded transition-colors"
+                  >
+                    Continue Adventure
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Authentication Modal */}
         <AuthModal
           isOpen={showAuthModal}

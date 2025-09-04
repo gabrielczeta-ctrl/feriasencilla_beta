@@ -11,7 +11,7 @@ export interface GameState {
   playerCharacter: Character | null;
   
   // UI States
-  activeModal: 'none' | 'character-sheet' | 'character-profile' | 'inventory' | 'settings';
+  activeModal: 'none' | 'character-sheet' | 'character-profile' | 'inventory' | 'settings' | 'current-context';
   showHUD: boolean;
   chatAutoScroll: boolean;
   

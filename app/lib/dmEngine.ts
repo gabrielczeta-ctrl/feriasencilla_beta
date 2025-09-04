@@ -197,17 +197,33 @@ export class DMEngine {
   }
 
   private async handleGeneralExploration(action: ParsedAction, context: AIPromptContext): Promise<AIResponse> {
-    const responses = [
-      `You attempt to ${action.intent}. The air is thick with possibility.`,
-      `As you ${action.intent}, you notice the environment around you more keenly.`,
-      `Your action draws the attention of nearby creatures - they seem curious about your intentions.`,
-      `The result of your action echoes through the area, perhaps alerting others to your presence.`
+    // Enhanced responses with more variety and context awareness
+    const tavernResponses = [
+      `As you ${action.intent} in the tavern, the warm atmosphere embraces you. Other patrons glance over with mild curiosity before returning to their conversations.`,
+      `The tavern keeper nods approvingly as you ${action.intent}. "Ah, another adventurer taking initiative," he murmurs while polishing a mug.`,
+      `Your action catches the attention of a hooded figure in the corner, who raises their drink in a subtle toast before disappearing into the shadows.`,
+      `The ancient wooden beams of the tavern seem to resonate with your energy as you ${action.intent}. Magic still lingers in this place.`,
+      `Several patrons pause their card game to watch as you ${action.intent}. One whispers to another, "Looks like we've got fresh blood here."`,
+      `A bard in the corner strums a chord that seems to accompany your action perfectly. The atmosphere becomes more charged with adventure.`,
+      `The tavern's magical lanterns flicker slightly as you ${action.intent}, as if responding to your presence and intent.`
     ];
 
+    const generalResponses = [
+      `You attempt to ${action.intent}. The world around you shifts subtly, full of untold possibilities.`,
+      `As you ${action.intent}, you feel the weight of destiny pressing upon your shoulders.`,
+      `Your action reverberates through the immediate area, drawing both seen and unseen attention.`,
+      `The very air seems to thicken with magic as you ${action.intent}, suggesting greater forces at work.`,
+      `Something stirs in the distance as you ${action.intent} - whether friend or foe remains to be seen.`
+    ];
+
+    // Choose responses based on location
+    const currentLocation = context.gameState.story.location || 'tavern';
+    const responses = currentLocation.toLowerCase().includes('tavern') ? tavernResponses : generalResponses;
+    
     const randomResponse = responses[Math.floor(Math.random() * responses.length)];
     
-    // 20% chance to trigger a random encounter
-    if (Math.random() < 0.2) {
+    // 15% chance to trigger a minor story development (reduced from 20%)
+    if (Math.random() < 0.15) {
       const encounters = this.encounterTemplates.filter(e => 
         e.locations.includes(context.gameState.story.location) || e.locations.includes('any')
       );
@@ -220,7 +236,15 @@ export class DMEngine {
 
     return {
       narration: randomResponse,
-      actions: []
+      actions: [{
+        type: 'custom',
+        parameters: { 
+          lastAction: action.intent,
+          timestamp: Date.now(),
+          location: currentLocation
+        },
+        description: 'Story context updated'
+      }]
     };
   }
 
