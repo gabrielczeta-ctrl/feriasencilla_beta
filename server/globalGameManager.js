@@ -105,12 +105,21 @@ export class GlobalGameManager {
     this.globalRoom.gameState.turnStartTime = Date.now();
     this.globalRoom.gameState.playersWhoActed.clear();
 
-    // Broadcast turn start
+    // Broadcast turn start with enhanced state information
     this.broadcastToAll({
       type: 'turn_phase_change',
       phase: 'player_turns',
       duration: this.globalRoom.settings.playerTurnDuration,
-      message: '📝 Player turn phase started! You have 15 seconds to send your action.'
+      message: '📝 Player turn phase started! You have 15 seconds to send your action.',
+      gameState: {
+        turnPhase: 'player_turns',
+        turnStartTime: this.globalRoom.gameState.turnStartTime,
+        playerTurnDuration: this.globalRoom.settings.playerTurnDuration,
+        dmUpdateInterval: this.globalRoom.settings.dmUpdateInterval,
+        playersWhoActed: this.globalRoom.gameState.playersWhoActed.size,
+        totalPlayers: this.globalRoom.players.size,
+        currentPhase: 'player_turns'
+      }
     });
 
     // Schedule turn end
@@ -122,11 +131,21 @@ export class GlobalGameManager {
   async endPlayerTurn() {
     this.globalRoom.gameState.turnPhase = 'dm_processing';
     
-    // Broadcast processing phase
+    // Broadcast processing phase with enhanced state information
     this.broadcastToAll({
       type: 'turn_phase_change',
       phase: 'dm_processing',
-      message: '🤖 DM is processing your actions...'
+      message: '🤖 DM is processing your actions...',
+      gameState: {
+        turnPhase: 'dm_processing',
+        turnStartTime: this.globalRoom.gameState.turnStartTime,
+        playerTurnDuration: this.globalRoom.settings.playerTurnDuration,
+        dmUpdateInterval: this.globalRoom.settings.dmUpdateInterval,
+        playersWhoActed: this.globalRoom.gameState.playersWhoActed.size,
+        totalPlayers: this.globalRoom.players.size,
+        currentPhase: 'dm_processing',
+        actionsToProcess: this.globalRoom.gameState.messageQueue.length
+      }
     });
 
     // Process queued messages with DM
@@ -374,6 +393,39 @@ export class GlobalGameManager {
 
   addClient(ws) {
     this.clients.add(ws);
+    console.log(`🎮 Client added to global server. Total: ${this.clients.size}`);
+    
+    // Send current game state to the new client
+    this.sendCurrentGameState(ws);
+  }
+
+  sendCurrentGameState(ws) {
+    // Send current turn phase information
+    ws.send(JSON.stringify({
+      type: 'game_state_sync',
+      gameState: {
+        turnPhase: this.globalRoom.gameState.turnPhase,
+        turnStartTime: this.globalRoom.gameState.turnStartTime,
+        playerTurnDuration: this.globalRoom.settings.playerTurnDuration,
+        dmUpdateInterval: this.globalRoom.settings.dmUpdateInterval,
+        playersWhoActed: this.globalRoom.gameState.playersWhoActed.size,
+        totalPlayers: this.globalRoom.players.size,
+        currentPhase: this.globalRoom.gameState.turnPhase
+      },
+      currentScene: this.globalRoom.gameState.currentScene
+    }));
+
+    // Send recent story context
+    if (this.globalRoom.gameState.storyContext.length > 0) {
+      const recentStory = this.globalRoom.gameState.storyContext.slice(-3); // Last 3 story messages
+      recentStory.forEach(story => {
+        ws.send(JSON.stringify({
+          type: 'dm_story_update',
+          story: story,
+          isHistorical: true
+        }));
+      });
+    }
   }
 
   removeClient(ws) {

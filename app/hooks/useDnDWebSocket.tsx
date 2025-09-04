@@ -196,19 +196,29 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
       case 'turn_phase_change':
         // Handle turn phase changes
         console.log(`🎮 Turn phase: ${message.phase} - ${message.message}`);
-        setGlobalServerState(prev => prev ? {
-          ...prev,
-          turnPhase: message.phase,
-          turnStartTime: Date.now(),
-          playersWhoActed: 0 // Reset when turn changes
-        } : {
-          turnPhase: message.phase,
-          turnStartTime: Date.now(),
-          playerTurnDuration: message.duration || 15000,
-          dmUpdateInterval: 30000,
-          playersWhoActed: 0,
-          totalPlayers: 1
-        });
+        if (message.gameState) {
+          setGlobalServerState(message.gameState);
+        } else {
+          setGlobalServerState(prev => prev ? {
+            ...prev,
+            turnPhase: message.phase,
+            turnStartTime: Date.now(),
+            playersWhoActed: 0 // Reset when turn changes
+          } : {
+            turnPhase: message.phase,
+            turnStartTime: Date.now(),
+            playerTurnDuration: message.duration || 15000,
+            dmUpdateInterval: 30000,
+            playersWhoActed: 0,
+            totalPlayers: 1
+          });
+        }
+        break;
+
+      case 'game_state_sync':
+        // Handle game state synchronization for new connections
+        console.log('🔄 Syncing game state:', message.gameState);
+        setGlobalServerState(message.gameState);
         break;
 
       case 'dm_story_update':
