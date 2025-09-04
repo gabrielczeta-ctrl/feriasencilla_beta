@@ -79,6 +79,7 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   const connect = useCallback((playerName: string) => {
     if (status === 'connected' || !wsUrl) return;
     
+    console.log('🔄 Attempting to connect to D&D server:', wsUrl);
     setStatus('connecting');
     
     try {
@@ -86,7 +87,7 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('🎲 Connected to D&D server');
+        console.log('🎲 Connected to D&D server:', wsUrl);
         setStatus('connected');
         reconnectAttempts.current = 0;
         
@@ -108,8 +109,13 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         console.log('🔌 Disconnected from D&D server');
+        console.log('Close event details:', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
         setStatus('disconnected');
         wsRef.current = null;
         
@@ -119,14 +125,18 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
           
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log(`🔄 Reconnect attempt ${reconnectAttempts.current}/${maxReconnectAttempts}`);
+            console.log(`🔄 Reconnect attempt ${reconnectAttempts.current}/${maxReconnectAttempts} to ${wsUrl}`);
             connect(playerName);
           }, delay);
+        } else {
+          console.error('❌ Max reconnection attempts reached. Connection failed.');
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('❌ WebSocket error:', error);
+        console.error('❌ WebSocket URL:', wsUrl);
+        console.error('❌ WebSocket ready state:', ws.readyState);
       };
 
     } catch (error) {
@@ -416,6 +426,9 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   const register = useCallback(async (username: string, password: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.error('❌ Registration failed - WebSocket not connected');
+        console.error('❌ WebSocket state:', wsRef.current?.readyState);
+        console.error('❌ Connection status:', status);
         reject(new Error('Not connected to server'));
         return;
       }
