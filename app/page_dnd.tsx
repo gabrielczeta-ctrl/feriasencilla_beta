@@ -128,28 +128,36 @@ export default function DnDPlatform() {
     }
   }, [status, state.phase, connect, playerName]);
 
-  // Send character to server when connection is established for guest users
+  // Send character to server when guest enters playing phase
   useEffect(() => {
     if (status === 'connected' && state.playerCharacter && state.phase === 'playing' && !isAuthenticated) {
       console.log('🐾 Sending guest character to server:', state.playerCharacter.name);
       createCharacter(state.playerCharacter).catch(error => {
         console.error('❌ Failed to send guest character to server:', error);
+        // If character creation fails, show error and go back to character choice
+        dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
       });
     }
-  }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter]);
+  }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter, dispatch]);
 
   // Handle authenticated user character loading and phase transitions
   useEffect(() => {
-    if (isAuthenticated && status === 'connected') {
-      if (userCharacter) {
-        // User has a character, go to playing phase
-        console.log('✅ Authenticated user with character, entering playing phase');
-        dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
-        dispatch({ type: 'SET_PHASE', payload: 'playing' });
+    if (status === 'connected') {
+      if (isAuthenticated) {
+        if (userCharacter) {
+          // User has a character, go to playing phase
+          console.log('✅ Authenticated user with character, entering playing phase');
+          dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
+          dispatch({ type: 'SET_PHASE', payload: 'playing' });
+        } else {
+          // User authenticated but no character, go to character creation
+          console.log('✅ Authenticated user without character, entering character creation');
+          dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
+        }
       } else {
-        // User authenticated but no character, go to character creation
-        console.log('✅ Authenticated user without character, entering character creation');
-        dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
+        // Guest user connected - show character choice options
+        console.log('🐾 Guest user connected, showing character choice options');
+        dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
       }
     }
   }, [isAuthenticated, userCharacter, status, dispatch]);
@@ -170,28 +178,13 @@ export default function DnDPlatform() {
     }
   }, [chatMessages, state.chatAutoScroll]);
 
-  // Update game state based on current room state - Global Server Mode
+  // Update game state based on WebSocket connection status
   useEffect(() => {
-    if (status === 'connected' && playerId) {
-      // Check if we already have a character from local state or server
-      if (state.playerCharacter || userCharacter) {
-        // Use local character (for guests) or server character (for authenticated users)
-        const character = state.playerCharacter || userCharacter;
-        if (character && !state.playerCharacter) {
-          dispatch({ type: 'SET_CHARACTER', payload: character });
-        }
-        dispatch({ type: 'SET_PHASE', payload: 'playing' });
-      } else if (isAuthenticated) {
-        // Authenticated user without character - show character creation
-        dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
-      } else {
-        // Guest already has a critter character generated at login
-        dispatch({ type: 'SET_PHASE', payload: 'playing' });
-      }
-    } else if (status === 'disconnected') {
+    if (status === 'disconnected') {
       dispatch({ type: 'SET_PHASE', payload: 'login' });
     }
-  }, [status, playerId, userCharacter, isAuthenticated, state.playerCharacter, dispatch]);
+    // Don't auto-transition to playing phase - let other useEffects handle proper flow
+  }, [status, dispatch]);
 
   // Track AI responses for debugging
   useEffect(() => {
@@ -231,16 +224,10 @@ export default function DnDPlatform() {
     if (playerName.trim()) {
       localStorage.setItem('dnd_player_name', playerName.trim());
       
-      // Generate random critter character for guests
-      const critterCharacter = generateRandomCritter(playerName.trim());
-      
-      // Store locally and set in state
-      dispatch({ type: 'SET_CHARACTER', payload: critterCharacter });
-      console.log(`🐾 Generated guest critter: ${critterCharacter.name} (${critterCharacter.race})`);
-      
-      // Start connection and proceed to playing phase
-      dispatch({ type: 'SET_PHASE', payload: 'playing' });
+      // Connect first, then let the user choose character type
       connect(playerName.trim());
+      // Phase will remain 'login' until connection is established
+      // Then useEffect will handle the proper flow based on authentication state
     }
   };
 
@@ -540,6 +527,99 @@ export default function DnDPlatform() {
             }`}>
               <div className="w-2 h-2 rounded-full bg-current"></div>
               {status === 'connected' ? 'Connected' : 
+               status === 'connecting' ? 'Connecting...' : 'Disconnected'}
+            </div>
+          </div>
+        </motion.div>
+        
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onLogin={handleAuthenticatedLogin}
+          onRegister={handleRegistration}
+        />
+      </div>
+    );
+  }
+
+  // Guest Character Choice Screen
+  if (state.phase === 'guest_character_choice') {
+    const handleCreateCritter = () => {
+      // Generate random critter character for guests
+      const critterCharacter = generateRandomCritter(playerName.trim());
+      
+      // Store locally and set in state
+      dispatch({ type: 'SET_CHARACTER', payload: critterCharacter });
+      console.log(`🐾 Generated guest critter: ${critterCharacter.name} (${critterCharacter.race})`);
+      
+      // Proceed to playing phase
+      dispatch({ type: 'SET_PHASE', payload: 'playing' });
+    };
+
+    const handleCreateFullCharacter = () => {
+      // Go to full character creation
+      dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
+    };
+
+    return (
+      <div className="min-h-screen flex items-center justify-center relative">
+        <FireShaderBackground setting="tavern" location="Character Choice" />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-gray-900 p-8 rounded-lg shadow-xl max-w-lg w-full mx-4"
+        >
+          <div className="text-center mb-8">
+            <h1 className="text-4xl font-bold text-white mb-2">🎭 Choose Your Character</h1>
+            <p className="text-gray-400">Welcome {playerName}! How would you like to play?</p>
+          </div>
+
+          <div className="space-y-4">
+            <button
+              onClick={handleCreateCritter}
+              className="w-full p-6 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors text-left"
+            >
+              <div className="flex items-center gap-4">
+                <span className="text-3xl">🐾</span>
+                <div>
+                  <div className="font-bold text-lg">Quick Start - Animal Critter</div>
+                  <div className="text-green-200 text-sm">Play as a cute animal companion (mouse, cat, rabbit, etc.)</div>
+                  <div className="text-green-300 text-xs mt-1">⚡ Jump right in! Perfect for beginners</div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleCreateFullCharacter}
+              className="w-full p-6 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors text-left"
+            >
+              <div className="flex items-center gap-4">
+                <span className="text-3xl">⚔️</span>
+                <div>
+                  <div className="font-bold text-lg">Full D&D Character</div>
+                  <div className="text-purple-200 text-sm">Create a complete D&D 5e character with stats, class & equipment</div>
+                  <div className="text-purple-300 text-xs mt-1">🎲 Full customization for experienced players</div>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="text-gray-400 hover:text-gray-300 transition-colors duration-200 text-sm"
+            >
+              🔐 Or login to your account
+            </button>
+          </div>
+
+          <div className="mt-4 text-center">
+            <div className={`inline-flex items-center gap-2 text-sm ${
+              status === 'connected' ? 'text-green-400' : 
+              status === 'connecting' ? 'text-yellow-400' : 'text-red-400'
+            }`}>
+              <div className="w-2 h-2 rounded-full bg-current"></div>
+              {status === 'connected' ? 'Connected to server' : 
                status === 'connecting' ? 'Connecting...' : 'Disconnected'}
             </div>
           </div>

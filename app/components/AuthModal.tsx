@@ -174,7 +174,7 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }: Auth
             className="text-gray-400 hover:text-gray-300 transition-colors duration-200"
             disabled={isLoading}
           >
-            Continue as Guest
+            Cancel
           </button>
         </div>
 

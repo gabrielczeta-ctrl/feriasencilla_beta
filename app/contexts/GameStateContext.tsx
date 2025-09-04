@@ -16,7 +16,7 @@ export interface GameState {
   chatAutoScroll: boolean;
   
   // Game Phase
-  phase: 'login' | 'lobby' | 'character_creation' | 'character_customization' | 'playing';
+  phase: 'login' | 'guest_character_choice' | 'lobby' | 'character_creation' | 'character_customization' | 'playing';
   
   // Notifications and Alerts
   notifications: GameNotification[];
