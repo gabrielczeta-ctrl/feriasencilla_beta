@@ -595,7 +595,7 @@ export default function DnDPlatform() {
               >
                 {state.showHUD ? '🎮 HUD ON' : '🎮 HUD OFF'}
               </button>
-              {currentRoom && currentRoom.players.find(p => p.id === playerId)?.role === 'dm' && (
+              {currentRoom && currentRoom.players?.find(p => p.id === playerId)?.role === 'dm' && (
                 <button
                   onClick={() => {
                     if (window.confirm('⚠️ DELETE SERVER: This will permanently delete the entire campaign and all data. Are you absolutely sure?')) {
