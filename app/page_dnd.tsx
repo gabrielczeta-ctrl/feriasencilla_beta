@@ -18,6 +18,7 @@ export default function DnDPlatform() {
   const [createdCharacter, setCreatedCharacter] = useState<Character | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [actionInput, setActionInput] = useState('');
+  const [talkInput, setTalkInput] = useState('');
   const [chatInput, setChatInput] = useState('');
   const [diceInput, setDiceInput] = useState('1d20');
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -279,7 +280,7 @@ export default function DnDPlatform() {
         setDebugPrompts(prev => [...prev, {
           id: `input_${Date.now()}`,
           type: 'user_input',
-          content: actionInput.trim(),
+          content: `[ACTION] ${actionInput.trim()}`,
           timestamp: Date.now(),
           turnId: currentTurnId,
           processed: false
@@ -290,6 +291,29 @@ export default function DnDPlatform() {
         setHasPlayerActedThisTurn(true);
       } catch (error) {
         console.error('Failed to send action:', error);
+      }
+    }
+  };
+
+  const handleSendTalk = async () => {
+    if (talkInput.trim() && !hasPlayerActedThisTurn && globalServerState.turnPhase === 'player_turns') {
+      try {
+        // Track user input for debugging
+        const currentTurnId = `turn_${globalServerState.turnStartTime}`;
+        setDebugPrompts(prev => [...prev, {
+          id: `input_${Date.now()}`,
+          type: 'user_input',
+          content: `[TALK] ${talkInput.trim()}`,
+          timestamp: Date.now(),
+          turnId: currentTurnId,
+          processed: false
+        }]);
+
+        await sendPlayerAction(`"${talkInput.trim()}"`);
+        setTalkInput('');
+        setHasPlayerActedThisTurn(true);
+      } catch (error) {
+        console.error('Failed to send talk:', error);
       }
     }
   };
@@ -685,48 +709,98 @@ export default function DnDPlatform() {
             </div>
 
             {/* Action Input */}
-            <div className="bg-gray-900 p-6 rounded-lg">
+            <div className="bg-gray-900 p-6 rounded-lg space-y-4">
               <h2 className="text-xl font-semibold mb-3">What do you do?</h2>
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={actionInput}
-                  onChange={(e) => setActionInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
-                  placeholder={
-                    (!userCharacter && !state.playerCharacter)
-                      ? "Create a character first to participate in the adventure..."
-                      : hasPlayerActedThisTurn 
-                      ? "You've already acted this turn. Wait for DM response..." 
-                      : globalServerState.turnPhase !== 'player_turns'
-                        ? "Wait for your turn to send actions..."
-                        : "Describe your action in one sentence..."
-                  }
-                  className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
-                  maxLength={500}
-                  disabled={(!userCharacter && !state.playerCharacter) || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                />
-                <button
-                  onClick={handleSendAction}
-                  disabled={
-                    (!userCharacter && !state.playerCharacter) ||
-                    !actionInput.trim() || 
-                    hasPlayerActedThisTurn || 
-                    globalServerState.turnPhase !== 'player_turns'
-                  }
-                  className={`px-6 py-3 rounded transition-colors font-semibold ${
-                    (!userCharacter && !state.playerCharacter)
-                      ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                      : hasPlayerActedThisTurn
-                        ? 'bg-green-600 text-white cursor-default'
+              
+              {/* Action Input */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-purple-400">⚔️ Action</label>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={actionInput}
+                    onChange={(e) => setActionInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
+                    placeholder={
+                      (!userCharacter && !state.playerCharacter)
+                        ? "Create a character first to participate..."
+                        : hasPlayerActedThisTurn 
+                        ? "You've already acted this turn. Wait for DM response..." 
                         : globalServerState.turnPhase !== 'player_turns'
-                          ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                          : actionInput.trim()
-                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                            : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  {(!userCharacter && !state.playerCharacter) ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Send'}
+                          ? "Wait for your turn to send actions..."
+                          : "Attack, investigate, move, cast spell..."
+                    }
+                    className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
+                    maxLength={500}
+                    disabled={(!userCharacter && !state.playerCharacter) || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                  />
+                  <button
+                    onClick={handleSendAction}
+                    disabled={
+                      (!userCharacter && !state.playerCharacter) ||
+                      !actionInput.trim() || 
+                      hasPlayerActedThisTurn || 
+                      globalServerState.turnPhase !== 'player_turns'
+                    }
+                    className={`px-6 py-3 rounded transition-colors font-semibold ${
+                      (!userCharacter && !state.playerCharacter)
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : hasPlayerActedThisTurn
+                          ? 'bg-green-600 text-white cursor-default'
+                          : globalServerState.turnPhase !== 'player_turns'
+                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                            : actionInput.trim()
+                              ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                              : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {(!userCharacter && !state.playerCharacter) ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Act'}
+                </button>
+              </div>
+
+              {/* Talk/Dialogue Input */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-green-400">💬 Talk/Dialogue</label>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={talkInput}
+                    onChange={(e) => setTalkInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSendTalk()}
+                    placeholder={
+                      (!userCharacter && !state.playerCharacter)
+                        ? "Create a character first to talk..."
+                        : hasPlayerActedThisTurn 
+                        ? "You've already acted this turn. Wait for DM response..." 
+                        : globalServerState.turnPhase !== 'player_turns'
+                          ? "Wait for your turn to talk..."
+                          : "Say something to NPCs or other players..."
+                    }
+                    className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
+                    maxLength={500}
+                    disabled={(!userCharacter && !state.playerCharacter) || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                  />
+                  <button
+                    onClick={handleSendTalk}
+                    disabled={
+                      (!userCharacter && !state.playerCharacter) ||
+                      !talkInput.trim() || 
+                      hasPlayerActedThisTurn || 
+                      globalServerState.turnPhase !== 'player_turns'
+                    }
+                    className={`px-6 py-3 rounded transition-colors font-semibold ${
+                      (!userCharacter && !state.playerCharacter)
+                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                        : hasPlayerActedThisTurn
+                          ? 'bg-green-600 text-white cursor-default'
+                          : globalServerState.turnPhase !== 'player_turns'
+                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                            : talkInput.trim()
+                              ? 'bg-green-600 hover:bg-green-700 text-white'
+                              : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {(!userCharacter && !state.playerCharacter) ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Talk'}
                 </button>
               </div>
             </div>
