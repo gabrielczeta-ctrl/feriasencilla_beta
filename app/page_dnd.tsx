@@ -12,7 +12,6 @@ import AuthModal from './components/AuthModal';
 import DMUpdateTimer from './components/DMUpdateTimer';
 import EnhancedMovementHUD from './components/EnhancedMovementHUD';
 import CombatManager from './components/CombatManager';
-import { useGameStateManager, PlayerAction } from './hooks/useGameStateManager';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 
 export default function DnDPlatform() {
@@ -84,13 +83,18 @@ export default function DnDPlatform() {
   // Update global server state when hook state changes
   useEffect(() => {
     if (hookGlobalState) {
+      const previousPhase = globalServerState.turnPhase;
       setGlobalServerState(hookGlobalState);
+      
       // Reset player turn state when turn phase changes to player_turns
-      if (hookGlobalState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn) {
+      if (hookGlobalState.turnPhase === 'player_turns' && previousPhase !== 'player_turns') {
+        console.log('🎮 Turn phase: player_turns - 📝 Player turn phase started! You have 15 seconds to send your action.');
         setHasPlayerActedThisTurn(false);
+      } else if (hookGlobalState.turnPhase === 'dm_processing') {
+        console.log('🎮 Turn phase: dm_processing - 🤖 DM is processing your actions...');
       }
     }
-  }, [hookGlobalState]);
+  }, [hookGlobalState, globalServerState.turnPhase]);
 
   // Reset turn state when new turn starts
   useEffect(() => {
@@ -131,77 +135,21 @@ export default function DnDPlatform() {
       // Global server: players can play without characters or create one if they want
       if (userCharacter) {
         dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
+        dispatch({ type: 'SET_PHASE', payload: 'playing' });
+      } else {
+        // No character yet - show character creation
+        dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
       }
-      dispatch({ type: 'SET_PHASE', payload: 'playing' });
     } else if (status === 'disconnected') {
       dispatch({ type: 'SET_PHASE', payload: 'login' });
     }
   }, [status, playerId, userCharacter, dispatch]);
 
-  // Initialize Game State Manager for enhanced LLM integration
-  const gameStateManager = useGameStateManager(
-    {
-      playerTurnDuration: globalServerState.playerTurnDuration || 15000,
-      aiProcessingTimeout: 10000,
-      maxActionsPerTurn: 5,
-      contextWindowSize: 20,
-      enableActionBatching: true,
-    },
-    // State update callback
-    (newState) => {
-      console.log('🎲 Game state updated:', newState);
-      // Here you could sync with your existing state management
-    },
-    // Process actions callback - integrate with your existing AI system
-    async (actions: PlayerAction[], context) => {
-      console.log('⚙️ Processing actions batch:', actions);
-      
-      // Build comprehensive context for AI
-      const actionDescriptions = actions.map(a => `${a.playerName}: ${a.action}`).join('\n');
-      const recentEvents = context.narrative.recentEvents.slice(-5).join('\n');
-      const memoryContext = actions
-        .filter(a => a.data?.memory)
-        .map(a => `Memory: ${a.data.memory.text}`)
-        .join('\n');
-
-      const fullPrompt = `
-GAME STATE UPDATE - Turn ${context.turnId}
-
-Recent Events:
-${recentEvents}
-
-Current Player Actions:
-${actionDescriptions}
-
-Character Memory Context:
-${memoryContext}
-
-Current Scene: ${context.environment.currentScene}
-Weather: ${context.environment.weather}
-Lighting: ${context.environment.lighting}
-
-Please respond with narrative continuation and any character/environmental changes.
-      `.trim();
-
-      try {
-        // Use your existing sendPlayerAction but with enhanced context
-        await sendPlayerAction(fullPrompt);
-        console.log('✅ AI processing request sent');
-      } catch (error) {
-        console.error('❌ AI processing failed:', error);
-        throw error;
-      }
-    }
-  );
-
-  // Track AI responses and integrate with GameStateManager
+  // Track AI responses for debugging
   useEffect(() => {
     if (chatMessages.length > 0) {
       const latestMessage = chatMessages[chatMessages.length - 1];
       if (latestMessage.playerName === 'DM' && latestMessage.type === 'system') {
-        // Apply AI response to game state manager
-        gameStateManager.applyAIResponse(latestMessage.content);
-        
         const currentTurnId = `turn_${globalServerState.turnStartTime}`;
         setDebugPrompts(prev => {
           // Check if this response is already tracked
@@ -229,7 +177,7 @@ Please respond with narrative continuation and any character/environmental chang
         });
       }
     }
-  }, [chatMessages, globalServerState.turnStartTime, gameStateManager]);
+  }, [chatMessages, globalServerState.turnStartTime]);
 
   const handleLogin = () => {
     if (playerName.trim()) {
@@ -336,15 +284,12 @@ Please respond with narrative continuation and any character/environmental chang
   };
 
   const handleSendAction = async () => {
-    if (actionInput.trim() && gameStateManager.canAddAction) {
-      const success = gameStateManager.addAction({
-        playerId: playerId || 'unknown',
-        playerName: playerName,
-        type: 'ability',
-        action: actionInput.trim(),
-      });
-
-      if (success) {
+    const canAct = globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn;
+    
+    if (actionInput.trim() && canAct) {
+      try {
+        // Send action directly to server instead of using conflicting state managers
+        await sendPlayerAction(actionInput.trim());
         setActionInput('');
         setHasPlayerActedThisTurn(true);
         
@@ -358,22 +303,29 @@ Please respond with narrative continuation and any character/environmental chang
           turnId: currentTurnId,
           processed: false
         }]);
-      } else {
-        console.warn('Could not add action - game state does not allow it');
+
+        console.log('✅ Action sent to server:', actionInput.trim());
+      } catch (error) {
+        console.error('❌ Failed to send action:', error);
+        setHasPlayerActedThisTurn(false); // Reset on error
       }
+    } else {
+      console.warn('Cannot send action:', { 
+        hasInput: !!actionInput.trim(),
+        canAct,
+        turnPhase: globalServerState.turnPhase,
+        hasActed: hasPlayerActedThisTurn 
+      });
     }
   };
 
   const handleSendTalk = async () => {
-    if (talkInput.trim() && gameStateManager.canAddAction) {
-      const success = gameStateManager.addAction({
-        playerId: playerId || 'unknown',
-        playerName: playerName,
-        type: 'dialogue',
-        action: `"${talkInput.trim()}"`,
-      });
-
-      if (success) {
+    const canAct = globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn;
+    
+    if (talkInput.trim() && canAct) {
+      try {
+        // Send dialogue directly to server
+        await sendPlayerAction(`"${talkInput.trim()}"`);
         setTalkInput('');
         setHasPlayerActedThisTurn(true);
         
@@ -387,9 +339,19 @@ Please respond with narrative continuation and any character/environmental chang
           turnId: currentTurnId,
           processed: false
         }]);
-      } else {
-        console.warn('Could not add dialogue - game state does not allow it');
+
+        console.log('✅ Dialogue sent to server:', talkInput.trim());
+      } catch (error) {
+        console.error('❌ Failed to send dialogue:', error);
+        setHasPlayerActedThisTurn(false); // Reset on error
       }
+    } else {
+      console.warn('Cannot send dialogue:', { 
+        hasInput: !!talkInput.trim(),
+        canAct,
+        turnPhase: globalServerState.turnPhase,
+        hasActed: hasPlayerActedThisTurn 
+      });
     }
   };
 
@@ -711,59 +673,8 @@ Please respond with narrative continuation and any character/environmental chang
           onUpdateCharacterHP={updateCharacterHP}
         />
         
-        {/* Enhanced Game State Display */}
+        {/* Game State Display */}
         <div className="max-w-7xl mx-auto p-4">
-          <div className="bg-gray-800 p-4 rounded-lg mb-4 border-l-4 border-l-blue-500">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="font-semibold text-blue-400">Game State Manager</h3>
-                <p className="text-sm text-gray-300">
-                  Turn: {gameStateManager.turnInfo.turnId} • 
-                  Phase: <span className={`font-medium ${
-                    gameStateManager.turnInfo.phase === 'player_input' ? 'text-green-400' :
-                    gameStateManager.turnInfo.phase === 'ai_processing' ? 'text-yellow-400' :
-                    gameStateManager.turnInfo.phase === 'ai_response' ? 'text-blue-400' :
-                    'text-purple-400'
-                  }`}>
-                    {gameStateManager.turnInfo.phase.replace('_', ' ')}
-                  </span>
-                </p>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-gray-400">
-                  Actions: {gameStateManager.turnInfo.actionCount}/{gameStateManager.turnInfo.maxActions}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {Math.ceil(gameStateManager.turnInfo.remaining / 1000)}s remaining
-                </div>
-                {gameStateManager.turnInfo.isProcessing && (
-                  <div className="text-yellow-400 text-xs animate-pulse">🤖 AI Processing...</div>
-                )}
-              </div>
-            </div>
-            
-            {gameStateManager.pendingActions.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <div className="text-sm text-gray-400 mb-2">Pending Actions:</div>
-                <div className="space-y-1">
-                  {gameStateManager.pendingActions.map((action, i) => (
-                    <div key={action.id} className="text-xs bg-gray-700 p-2 rounded flex justify-between">
-                      <span>{action.playerName}: {action.action}</span>
-                      <span className="text-gray-400">{action.type}</span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={gameStateManager.forceProcessActions}
-                  className="mt-2 px-3 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs transition-colors"
-                >
-                  Force Process Now
-                </button>
-              </div>
-            )}
-          </div>
-          
-          {/* Original Timer (kept for compatibility) */}
           <DMUpdateTimer
             turnPhase={globalServerState.turnPhase}
             turnStartTime={globalServerState.turnStartTime}
@@ -830,9 +741,9 @@ Please respond with narrative continuation and any character/environmental chang
 
             {/* Enhanced Movement & Memory HUD */}
             <EnhancedMovementHUD 
-              turnNumber={Math.floor((Date.now() - gameStateManager.gameState.timestamp) / 30000) + 1}
-              gamePhase={gameStateManager.gameState.phase}
-              canAct={gameStateManager.canAddAction}
+              turnNumber={Math.floor((Date.now() - globalServerState.turnStartTime) / 30000) + 1}
+              gamePhase={globalServerState.turnPhase === 'player_turns' ? 'player_input' : 'ai_processing'}
+              canAct={globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn}
               initialCharacter={{
                 id: playerId || 'player',
                 name: userCharacter?.name || playerName || 'Hero',
@@ -843,7 +754,20 @@ Please respond with narrative continuation and any character/environmental chang
                 armorClass: userCharacter?.armorClass || 15,
                 memory: []
               }}
-              onAddAction={gameStateManager.addAction}
+              onAddAction={(action) => {
+                // Convert action to server format and send
+                const actionString = `[MOVEMENT] ${action.action}`;
+                if (globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn) {
+                  sendPlayerAction(actionString).then(() => {
+                    setHasPlayerActedThisTurn(true);
+                    console.log('✅ Movement action sent:', actionString);
+                  }).catch(error => {
+                    console.error('❌ Failed to send movement action:', error);
+                  });
+                  return true;
+                }
+                return false;
+              }}
               onSaveState={(slot, snapshot) => {
                 localStorage.setItem(`dnd_enhanced_save_${slot}`, JSON.stringify(snapshot));
                 console.log(`💾 Game saved to slot ${slot}`);
@@ -882,6 +806,11 @@ Please respond with narrative continuation and any character/environmental chang
                       onClick={handleSendAction}
                       disabled={!actionInput.trim() || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
                       className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
+                      title={
+                        hasPlayerActedThisTurn ? "You've already acted this turn" :
+                        globalServerState.turnPhase !== 'player_turns' ? "Not player turn phase" :
+                        !actionInput.trim() ? "Enter an action" : "Send action"
+                      }
                     >
                       Act
                     </button>
@@ -907,6 +836,11 @@ Please respond with narrative continuation and any character/environmental chang
                       onClick={handleSendTalk}
                       disabled={!talkInput.trim() || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
                       className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
+                      title={
+                        hasPlayerActedThisTurn ? "You've already acted this turn" :
+                        globalServerState.turnPhase !== 'player_turns' ? "Not player turn phase" :
+                        !talkInput.trim() ? "Enter dialogue" : "Send dialogue"
+                      }
                     >
                       Say
                     </button>
@@ -1078,10 +1012,23 @@ Please respond with narrative continuation and any character/environmental chang
         <CombatManager
           isVisible={showCombatManager}
           onToggle={() => setShowCombatManager(!showCombatManager)}
-          onAddAction={gameStateManager.addAction}
+          onAddAction={(action) => {
+            // Convert action to server format and send
+            const actionString = `[COMBAT] ${action.action}`;
+            if (globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn) {
+              sendPlayerAction(actionString).then(() => {
+                setHasPlayerActedThisTurn(true);
+                console.log('✅ Combat action sent:', actionString);
+              }).catch(error => {
+                console.error('❌ Failed to send combat action:', error);
+              });
+              return true;
+            }
+            return false;
+          }}
           playerId={playerId || 'unknown'}
           playerName={playerName}
-          canAct={gameStateManager.canAddAction}
+          canAct={globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn}
         />
 
         {/* Authentication Modal */}
