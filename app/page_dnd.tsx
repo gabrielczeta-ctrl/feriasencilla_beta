@@ -118,15 +118,7 @@ export default function DnDPlatform() {
     }
   }, []);
 
-  // Auto-connect to WebSocket server for authentication
-  useEffect(() => {
-    if (status === 'disconnected' && state.phase === 'login') {
-      console.log('🔄 Auto-connecting to server for authentication...');
-      // Connect with player name if available, otherwise temp name
-      const connectName = playerName.trim() || 'temp-user-for-auth';
-      connect(connectName);
-    }
-  }, [status, state.phase, connect, playerName]);
+  // Don't auto-connect - wait for user to explicitly connect with their chosen name
 
   // Send character to server when guest enters playing phase
   useEffect(() => {

@@ -293,6 +293,10 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         break;
 
       case 'character_created':
+        console.log('✅ Server confirmed character created:', message.character?.name);
+        if (message.character) {
+          setUserCharacter(message.character);
+        }
         if (currentRoom) {
           const updatedRoom = { ...currentRoom };
           const player = updatedRoom.players.find(p => p.id === message.playerId);
@@ -369,6 +373,10 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
             setCurrentRoom(updatedRoom);
           }
         }
+        break;
+
+      case 'character_creation_failed':
+        console.error('❌ Character creation failed:', message.message);
         break;
 
       case 'error':
@@ -506,12 +514,14 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   }, [sendMessage]);
 
   const createCharacter = useCallback(async (character: Character): Promise<void> => {
+    console.log('📤 Sending character creation request for:', character.name);
     if (!sendMessage({
       type: 'create_character',
       character
     })) {
       throw new Error('Not connected to server');
     }
+    console.log('✅ Character creation request sent successfully');
   }, [sendMessage]);
 
   const updateCharacter = useCallback(async (character: Character): Promise<void> => {
