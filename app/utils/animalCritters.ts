@@ -161,7 +161,17 @@ export function convertToAnimalSpeak(text: string, species: string): string {
 }
 
 export function isGuestCritter(character: Character | null): boolean {
-  return character?.class === 'Animal Critter' || character?.race?.includes('Mouse') || character?.race?.includes('Cat') || 
-         character?.race?.includes('Sparrow') || character?.race?.includes('Rabbit') || character?.race?.includes('Owl') ||
-         character?.race?.includes('Squirrel') || character?.race?.includes('Frog') || character?.race?.includes('Hedgehog');
+  if (!character) return false;
+  
+  // Check if it's an Animal Critter class
+  const isAnimalCritter = character.class === 'Animal Critter';
+  
+  // Check if race contains animal species names
+  const isAnimalRace = character.race && typeof character.race === 'string' && (
+    character.race.includes('Mouse') || character.race.includes('Cat') || 
+    character.race.includes('Sparrow') || character.race.includes('Rabbit') || character.race.includes('Owl') ||
+    character.race.includes('Squirrel') || character.race.includes('Frog') || character.race.includes('Hedgehog')
+  );
+  
+  return isAnimalCritter || Boolean(isAnimalRace);
 }

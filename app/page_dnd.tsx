@@ -138,10 +138,10 @@ export default function DnDPlatform() {
   useEffect(() => {
     if (status === 'connected' && playerId) {
       // Check if we already have a character from local state or server
-      if (state.character || userCharacter) {
+      if (state.playerCharacter || userCharacter) {
         // Use local character (for guests) or server character (for authenticated users)
-        const character = state.character || userCharacter;
-        if (character && !state.character) {
+        const character = state.playerCharacter || userCharacter;
+        if (character && !state.playerCharacter) {
           dispatch({ type: 'SET_CHARACTER', payload: character });
         }
         dispatch({ type: 'SET_PHASE', payload: 'playing' });
@@ -155,7 +155,7 @@ export default function DnDPlatform() {
     } else if (status === 'disconnected') {
       dispatch({ type: 'SET_PHASE', payload: 'login' });
     }
-  }, [status, playerId, userCharacter, isAuthenticated, state.character, dispatch]);
+  }, [status, playerId, userCharacter, isAuthenticated, state.playerCharacter, dispatch]);
 
   // Track AI responses for debugging
   useEffect(() => {
@@ -330,7 +330,7 @@ export default function DnDPlatform() {
         let processedAction = actionInput.trim();
         
         // Convert guest critter speech to animal sounds
-        const currentCharacter = state.character || userCharacter;
+        const currentCharacter = state.playerCharacter || userCharacter;
         if (currentCharacter && isGuestCritter(currentCharacter)) {
           processedAction = convertToAnimalSpeak(processedAction, currentCharacter.race);
           console.log(`🐾 Converted guest action: "${actionInput.trim()}" → "${processedAction}"`);
@@ -375,7 +375,7 @@ export default function DnDPlatform() {
         let processedTalk = talkInput.trim();
         
         // Convert guest critter speech to animal sounds
-        const currentCharacter = state.character || userCharacter;
+        const currentCharacter = state.playerCharacter || userCharacter;
         if (currentCharacter && isGuestCritter(currentCharacter)) {
           processedTalk = convertToAnimalSpeak(processedTalk, currentCharacter.race);
           console.log(`🐾 Converted guest dialogue: "${talkInput.trim()}" → "${processedTalk}"`);
@@ -453,7 +453,7 @@ export default function DnDPlatform() {
               type="text"
               value={playerName}
               onChange={(e) => setPlayerName(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              onKeyPress={(e) => e.key === 'Enter' && handleGuestLogin()}
               placeholder="Your character name"
               className="w-full p-4 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none"
               maxLength={50}
@@ -724,7 +724,7 @@ export default function DnDPlatform() {
 
   // Playing Phase
   if (state.phase === 'playing') {
-    const currentCharacter = state.character || userCharacter;
+    const currentCharacter = state.playerCharacter || userCharacter;
     const currentScene = "The Eternal Tavern";
     const sceneDescription = "The tavern buzzes with activity as adventurers from across the realms gather. The fire crackles warmly in the stone hearth, casting dancing shadows on the wooden walls. A mysterious hooded figure sits alone in the corner, while the barkeep serves drinks to a group of chattering halflings. The air is thick with the scent of ale, roasted meat, and adventure.";
 
@@ -849,6 +849,7 @@ export default function DnDPlatform() {
               dmUpdateInterval={globalServerState.dmUpdateInterval}
               playersWhoActed={globalServerState.playersWhoActed}
               totalPlayers={globalServerState.totalPlayers}
+              hasPlayerActed={hasPlayerActedThisTurn}
             />
           </div>
 
@@ -873,13 +874,11 @@ export default function DnDPlatform() {
         <AnimatePresence>
           {showCombatManager && (
             <CombatManager
-              isOpen={showCombatManager}
-              onClose={() => setShowCombatManager(false)}
-              players={[]}
-              onUpdatePlayer={() => {}}
-              onAddNPC={() => {}}
-              onStartCombat={() => {}}
-              onEndCombat={() => {}}
+              isVisible={showCombatManager}
+              onToggle={() => setShowCombatManager(false)}
+              playerId={playerId || ''}
+              playerName={playerName || ''}
+              canAct={globalServerState.turnPhase === 'player_turns' && !hasPlayerActedThisTurn}
             />
           )}
         </AnimatePresence>
