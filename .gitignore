@@ -38,3 +38,10 @@ next-env.d.ts
 # Server specific
 server/node_modules/
 server/.env
+
+# Testing
+/coverage
+/server/coverage
+/__tests__/playwright-report/
+/__tests__/test-results/
+/test-results/

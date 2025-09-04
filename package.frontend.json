@@ -1,6 +1,6 @@
 {
-  "name": "partywall-realtime",
-  "version": "0.1.0",
+  "name": "dnd-platform",
+  "version": "1.0.0",
   "private": true,
   "engines": {
     "node": ">=18"
@@ -11,8 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "server": "cd server && node server.js",
-    "server:dev": "cd server && npm run dev",
+    "server": "cd server && node dnd-server.js",
+    "server:dev": "cd server && node dnd-server.js",
     "server:install": "cd server && npm install"
   },
   "dependencies": {

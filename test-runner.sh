@@ -207,11 +207,12 @@ if [ "$RUN_E2E" -eq 1 ]; then
     
     # Install Playwright browsers if needed
     if ! command_exists playwright; then
-        npx playwright install || {
+        cd __tests__ && npx playwright install || {
             print_error "Failed to install Playwright browsers"
             kill $FRONTEND_PID $SERVER_PID 2>/dev/null || true
             exit 1
         }
+        cd ..
     fi
     
     # Run E2E tests

@@ -14,11 +14,11 @@
     "server": "cd server && node dnd-server.js",
     "server:dev": "cd server && node dnd-server.js",
     "server:install": "cd server && npm install",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "jest --testPathPattern=__tests__/frontend",
+    "test:watch": "jest --watch --testPathPattern=__tests__/frontend",
+    "test:coverage": "jest --coverage --testPathPattern=__tests__/frontend",
     "test:server": "cd server && npm test",
-    "test:e2e": "playwright test"
+    "test:e2e": "cd __tests__ && playwright test"
   },
   "dependencies": {
     "next": "^14.0.0",
