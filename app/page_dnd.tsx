@@ -10,6 +10,9 @@ import FireShaderBackground from './components/FireShaderBackground';
 import GameHUD from './components/GameHUD';
 import AuthModal from './components/AuthModal';
 import DMUpdateTimer from './components/DMUpdateTimer';
+import EnhancedMovementHUD from './components/EnhancedMovementHUD';
+import CombatManager from './components/CombatManager';
+import { useGameStateManager, PlayerAction } from './hooks/useGameStateManager';
 import { Character, GameRoom, ChatMessage, DiceRoll } from './types/dnd';
 
 export default function DnDPlatform() {
@@ -24,6 +27,7 @@ export default function DnDPlatform() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [hasPlayerActedThisTurn, setHasPlayerActedThisTurn] = useState(false);
+  const [showCombatManager, setShowCombatManager] = useState(false);
   const [globalServerState, setGlobalServerState] = useState({
     turnPhase: 'player_turns' as 'player_turns' | 'dm_processing' | 'dm_response',
     turnStartTime: Date.now(),
@@ -134,11 +138,70 @@ export default function DnDPlatform() {
     }
   }, [status, playerId, userCharacter, dispatch]);
 
-  // Track AI responses from DM messages for debugging
+  // Initialize Game State Manager for enhanced LLM integration
+  const gameStateManager = useGameStateManager(
+    {
+      playerTurnDuration: globalServerState.playerTurnDuration || 15000,
+      aiProcessingTimeout: 10000,
+      maxActionsPerTurn: 5,
+      contextWindowSize: 20,
+      enableActionBatching: true,
+    },
+    // State update callback
+    (newState) => {
+      console.log('🎲 Game state updated:', newState);
+      // Here you could sync with your existing state management
+    },
+    // Process actions callback - integrate with your existing AI system
+    async (actions: PlayerAction[], context) => {
+      console.log('⚙️ Processing actions batch:', actions);
+      
+      // Build comprehensive context for AI
+      const actionDescriptions = actions.map(a => `${a.playerName}: ${a.action}`).join('\n');
+      const recentEvents = context.narrative.recentEvents.slice(-5).join('\n');
+      const memoryContext = actions
+        .filter(a => a.data?.memory)
+        .map(a => `Memory: ${a.data.memory.text}`)
+        .join('\n');
+
+      const fullPrompt = `
+GAME STATE UPDATE - Turn ${context.turnId}
+
+Recent Events:
+${recentEvents}
+
+Current Player Actions:
+${actionDescriptions}
+
+Character Memory Context:
+${memoryContext}
+
+Current Scene: ${context.environment.currentScene}
+Weather: ${context.environment.weather}
+Lighting: ${context.environment.lighting}
+
+Please respond with narrative continuation and any character/environmental changes.
+      `.trim();
+
+      try {
+        // Use your existing sendPlayerAction but with enhanced context
+        await sendPlayerAction(fullPrompt);
+        console.log('✅ AI processing request sent');
+      } catch (error) {
+        console.error('❌ AI processing failed:', error);
+        throw error;
+      }
+    }
+  );
+
+  // Track AI responses and integrate with GameStateManager
   useEffect(() => {
     if (chatMessages.length > 0) {
       const latestMessage = chatMessages[chatMessages.length - 1];
       if (latestMessage.playerName === 'DM' && latestMessage.type === 'system') {
+        // Apply AI response to game state manager
+        gameStateManager.applyAIResponse(latestMessage.content);
+        
         const currentTurnId = `turn_${globalServerState.turnStartTime}`;
         setDebugPrompts(prev => {
           // Check if this response is already tracked
@@ -166,7 +229,7 @@ export default function DnDPlatform() {
         });
       }
     }
-  }, [chatMessages, globalServerState.turnStartTime]);
+  }, [chatMessages, globalServerState.turnStartTime, gameStateManager]);
 
   const handleLogin = () => {
     if (playerName.trim()) {
@@ -273,9 +336,19 @@ export default function DnDPlatform() {
   };
 
   const handleSendAction = async () => {
-    if (actionInput.trim() && !hasPlayerActedThisTurn && globalServerState.turnPhase === 'player_turns') {
-      try {
-        // Track user input for debugging
+    if (actionInput.trim() && gameStateManager.canAddAction) {
+      const success = gameStateManager.addAction({
+        playerId: playerId || 'unknown',
+        playerName: playerName,
+        type: 'ability',
+        action: actionInput.trim(),
+      });
+
+      if (success) {
+        setActionInput('');
+        setHasPlayerActedThisTurn(true);
+        
+        // Track for debugging
         const currentTurnId = `turn_${globalServerState.turnStartTime}`;
         setDebugPrompts(prev => [...prev, {
           id: `input_${Date.now()}`,
@@ -285,20 +358,26 @@ export default function DnDPlatform() {
           turnId: currentTurnId,
           processed: false
         }]);
-
-        await sendPlayerAction(actionInput.trim());
-        setActionInput('');
-        setHasPlayerActedThisTurn(true);
-      } catch (error) {
-        console.error('Failed to send action:', error);
+      } else {
+        console.warn('Could not add action - game state does not allow it');
       }
     }
   };
 
   const handleSendTalk = async () => {
-    if (talkInput.trim() && !hasPlayerActedThisTurn && globalServerState.turnPhase === 'player_turns') {
-      try {
-        // Track user input for debugging
+    if (talkInput.trim() && gameStateManager.canAddAction) {
+      const success = gameStateManager.addAction({
+        playerId: playerId || 'unknown',
+        playerName: playerName,
+        type: 'dialogue',
+        action: `"${talkInput.trim()}"`,
+      });
+
+      if (success) {
+        setTalkInput('');
+        setHasPlayerActedThisTurn(true);
+        
+        // Track for debugging
         const currentTurnId = `turn_${globalServerState.turnStartTime}`;
         setDebugPrompts(prev => [...prev, {
           id: `input_${Date.now()}`,
@@ -308,12 +387,8 @@ export default function DnDPlatform() {
           turnId: currentTurnId,
           processed: false
         }]);
-
-        await sendPlayerAction(`"${talkInput.trim()}"`);
-        setTalkInput('');
-        setHasPlayerActedThisTurn(true);
-      } catch (error) {
-        console.error('Failed to send talk:', error);
+      } else {
+        console.warn('Could not add dialogue - game state does not allow it');
       }
     }
   };
@@ -625,18 +700,70 @@ export default function DnDPlatform() {
   if (state.phase === 'playing') {
     return (
       <div className="min-h-screen text-white relative overflow-auto">
-          <FireShaderBackground 
-            setting="tavern"
-            location="The Eternal Tavern"
-          />
-          
-          {/* Game HUD */}
-          <GameHUD
-            onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
-            onUpdateCharacterHP={updateCharacterHP}
-          />
-          {/* Global Server Timer */}
+        <FireShaderBackground 
+          setting="tavern"
+          location="The Eternal Tavern"
+        />
+        
+        {/* Game HUD */}
+        <GameHUD
+          onToggleModal={(modal) => dispatch({ type: 'SET_MODAL', payload: modal })}
+          onUpdateCharacterHP={updateCharacterHP}
+        />
+        
+        {/* Enhanced Game State Display */}
         <div className="max-w-7xl mx-auto p-4">
+          <div className="bg-gray-800 p-4 rounded-lg mb-4 border-l-4 border-l-blue-500">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-semibold text-blue-400">Game State Manager</h3>
+                <p className="text-sm text-gray-300">
+                  Turn: {gameStateManager.turnInfo.turnId} • 
+                  Phase: <span className={`font-medium ${
+                    gameStateManager.turnInfo.phase === 'player_input' ? 'text-green-400' :
+                    gameStateManager.turnInfo.phase === 'ai_processing' ? 'text-yellow-400' :
+                    gameStateManager.turnInfo.phase === 'ai_response' ? 'text-blue-400' :
+                    'text-purple-400'
+                  }`}>
+                    {gameStateManager.turnInfo.phase.replace('_', ' ')}
+                  </span>
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-400">
+                  Actions: {gameStateManager.turnInfo.actionCount}/{gameStateManager.turnInfo.maxActions}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {Math.ceil(gameStateManager.turnInfo.remaining / 1000)}s remaining
+                </div>
+                {gameStateManager.turnInfo.isProcessing && (
+                  <div className="text-yellow-400 text-xs animate-pulse">🤖 AI Processing...</div>
+                )}
+              </div>
+            </div>
+            
+            {gameStateManager.pendingActions.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-700">
+                <div className="text-sm text-gray-400 mb-2">Pending Actions:</div>
+                <div className="space-y-1">
+                  {gameStateManager.pendingActions.map((action, i) => (
+                    <div key={action.id} className="text-xs bg-gray-700 p-2 rounded flex justify-between">
+                      <span>{action.playerName}: {action.action}</span>
+                      <span className="text-gray-400">{action.type}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={gameStateManager.forceProcessActions}
+                  className="mt-2 px-3 py-1 bg-yellow-600 hover:bg-yellow-700 rounded text-xs transition-colors"
+                >
+                  Force Process Now
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {/* Original Timer (kept for compatibility) */}
           <DMUpdateTimer
             turnPhase={globalServerState.turnPhase}
             turnStartTime={globalServerState.turnStartTime}
@@ -660,6 +787,13 @@ export default function DnDPlatform() {
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setShowCombatManager(true)}
+                className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm transition-colors"
+                title="Open Combat Manager"
+              >
+                ⚔️ Combat
+              </button>
+              <button
                 onClick={() => dispatch({ type: 'TOGGLE_HUD' })}
                 className={`px-3 py-1 rounded text-sm transition-colors ${
                   state.showHUD 
@@ -670,794 +804,285 @@ export default function DnDPlatform() {
               >
                 {state.showHUD ? '🎮 HUD ON' : '🎮 HUD OFF'}
               </button>
-              {currentRoom && currentRoom.players?.find(p => p.id === playerId)?.role === 'dm' && (
-                <button
-                  onClick={() => {
-                    if (window.confirm('⚠️ DELETE SERVER: This will permanently delete the entire campaign and all data. Are you absolutely sure?')) {
-                      // TODO: Implement server deletion
-                      console.log('🗑️ DELETE SERVER requested for room:', currentRoom?.id);
-                      alert('🚧 Server deletion functionality coming soon!');
-                    }
-                  }}
-                  className="px-3 py-1 bg-red-800 hover:bg-red-900 rounded text-sm transition-colors border border-red-600"
-                  title="Delete entire server (DM only)"
-                >
-                  🗑️ DELETE SERVER
-                </button>
-              )}
               <button
-                onClick={handleLeaveRoom}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
+                onClick={() => disconnect()}
+                className="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm transition-colors"
               >
-                Leave
+                Leave Server
               </button>
             </div>
           </div>
         </div>
 
+        {/* Main Game Grid */}
         <div className="max-w-7xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Game Area */}
+          {/* Game World & Movement */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Scene Description */}
+            {/* Current Scene */}
             <div className="bg-gray-900 p-6 rounded-lg">
               <h2 className="text-xl font-semibold mb-3">Current Scene</h2>
               <p className="text-gray-300 leading-relaxed">
-                {currentRoom?.gameState?.story?.sceneDescription || "The adventure awaits..."}
+                The tavern buzzes with activity as adventurers from across the realms gather. 
+                The fire crackles warmly in the stone hearth, casting dancing shadows on the 
+                wooden walls. A mysterious figure in a hooded cloak sits alone in the corner...
               </p>
             </div>
 
-            {/* Action Input */}
-            <div className="bg-gray-900 p-6 rounded-lg space-y-4">
-              <h2 className="text-xl font-semibold mb-3">What do you do?</h2>
+            {/* Enhanced Movement & Memory HUD */}
+            <EnhancedMovementHUD 
+              turnNumber={Math.floor((Date.now() - gameStateManager.gameState.timestamp) / 30000) + 1}
+              gamePhase={gameStateManager.gameState.phase}
+              canAct={gameStateManager.canAddAction}
+              initialCharacter={{
+                id: playerId || 'player',
+                name: userCharacter?.name || playerName || 'Hero',
+                speed: 30,
+                conditions: [],
+                position: { x: 2, y: 2 },
+                hitPoints: userCharacter?.hitPoints || { current: 25, maximum: 25 },
+                armorClass: userCharacter?.armorClass || 15,
+                memory: []
+              }}
+              onAddAction={gameStateManager.addAction}
+              onSaveState={(slot, snapshot) => {
+                localStorage.setItem(`dnd_enhanced_save_${slot}`, JSON.stringify(snapshot));
+                console.log(`💾 Game saved to slot ${slot}`);
+              }}
+              onLoadState={(slot) => {
+                const saved = localStorage.getItem(`dnd_enhanced_save_${slot}`);
+                if (saved) {
+                  console.log(`📁 Game loaded from slot ${slot}`);
+                  return JSON.parse(saved);
+                }
+                return null;
+              }}
+            />
+
+            {/* Action Input Panel */}
+            <div className="bg-gray-900 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">Your Turn</h3>
               
               {/* Action Input */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-purple-400">⚔️ Action</label>
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    value={actionInput}
-                    onChange={(e) => setActionInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
-                    placeholder={
-                      (!userCharacter && !state.playerCharacter)
-                        ? "Create a character first to participate..."
-                        : hasPlayerActedThisTurn 
-                        ? "You've already acted this turn. Wait for DM response..." 
-                        : globalServerState.turnPhase !== 'player_turns'
-                          ? "Wait for your turn to send actions..."
-                          : "Attack, investigate, move, cast spell..."
-                    }
-                    className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
-                    maxLength={500}
-                    disabled={(!userCharacter && !state.playerCharacter) || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                  />
-                  <button
-                    onClick={handleSendAction}
-                    disabled={
-                      (!userCharacter && !state.playerCharacter) ||
-                      !actionInput.trim() || 
-                      hasPlayerActedThisTurn || 
-                      globalServerState.turnPhase !== 'player_turns'
-                    }
-                    className={`px-6 py-3 rounded transition-colors font-semibold ${
-                      (!userCharacter && !state.playerCharacter)
-                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : hasPlayerActedThisTurn
-                          ? 'bg-green-600 text-white cursor-default'
-                          : globalServerState.turnPhase !== 'player_turns'
-                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                            : actionInput.trim()
-                              ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                              : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {(!userCharacter && !state.playerCharacter) ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Act'}
-                </button>
-              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Action
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={actionInput}
+                      onChange={(e) => setActionInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
+                      placeholder="Describe what you want to do..."
+                      className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
+                      disabled={hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                    />
+                    <button
+                      onClick={handleSendAction}
+                      disabled={!actionInput.trim() || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
+                    >
+                      Act
+                    </button>
+                  </div>
+                </div>
 
-              {/* Talk/Dialogue Input */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-green-400">💬 Talk/Dialogue</label>
-                <div className="flex gap-3">
-                  <input
-                    type="text"
-                    value={talkInput}
-                    onChange={(e) => setTalkInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSendTalk()}
-                    placeholder={
-                      (!userCharacter && !state.playerCharacter)
-                        ? "Create a character first to talk..."
-                        : hasPlayerActedThisTurn 
-                        ? "You've already acted this turn. Wait for DM response..." 
-                        : globalServerState.turnPhase !== 'player_turns'
-                          ? "Wait for your turn to talk..."
-                          : "Say something to NPCs or other players..."
-                    }
-                    className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
-                    maxLength={500}
-                    disabled={(!userCharacter && !state.playerCharacter) || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
-                  />
-                  <button
-                    onClick={handleSendTalk}
-                    disabled={
-                      (!userCharacter && !state.playerCharacter) ||
-                      !talkInput.trim() || 
-                      hasPlayerActedThisTurn || 
-                      globalServerState.turnPhase !== 'player_turns'
-                    }
-                    className={`px-6 py-3 rounded transition-colors font-semibold ${
-                      (!userCharacter && !state.playerCharacter)
-                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                        : hasPlayerActedThisTurn
-                          ? 'bg-green-600 text-white cursor-default'
-                          : globalServerState.turnPhase !== 'player_turns'
-                            ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                            : talkInput.trim()
-                              ? 'bg-green-600 hover:bg-green-700 text-white'
-                              : 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {(!userCharacter && !state.playerCharacter) ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Talk'}
-                </button>
+                {/* Talk Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Dialogue
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={talkInput}
+                      onChange={(e) => setTalkInput(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSendTalk()}
+                      placeholder="What do you say?"
+                      className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
+                      disabled={hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                    />
+                    <button
+                      onClick={handleSendTalk}
+                      disabled={!talkInput.trim() || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                      className="px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
+                    >
+                      Say
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Chat Log */}
-            <div className="bg-gray-900 p-6 rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xl font-semibold">Adventure Log</h2>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'current-context' })}
-                    className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition-colors"
-                    title="View current game context and story"
-                  >
-                    📖 Context
-                  </button>
-                  <button
-                    onClick={() => dispatch({ type: 'TOGGLE_CHAT_AUTO_SCROLL' })}
-                    className={`px-3 py-1 rounded text-sm transition-colors ${
-                      state.chatAutoScroll 
-                        ? 'bg-green-600 hover:bg-green-700' 
-                        : 'bg-gray-600 hover:bg-gray-500'
-                    }`}
-                    title={state.chatAutoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'}
-                  >
-                    {state.chatAutoScroll ? '📜 Auto' : '📜 Manual'}
-                  </button>
-                </div>
+            {/* Chat & Events */}
+            <div className="bg-gray-900 rounded-lg overflow-hidden">
+              <div className="p-4 bg-gray-800 border-b border-gray-700">
+                <h3 className="font-semibold">Game Events & Chat</h3>
               </div>
               <div 
                 ref={chatContainerRef}
-                className="h-96 overflow-y-auto space-y-2 scroll-smooth">
-                {chatMessages.map((message) => (
-                  <div key={message.id} className={`p-2 rounded text-sm ${
-                    message.type === 'system' ? 'bg-purple-900/30 border-l-4 border-purple-500' :
-                    message.type === 'action' ? 'bg-blue-900/30' :
-                    message.type === 'dice' ? 'bg-green-900/30' :
-                    'bg-gray-800'
-                  }`}>
+                className="h-96 overflow-y-auto p-4 space-y-3"
+              >
+                {chatMessages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 rounded-lg ${
+                      message.playerName === 'DM'
+                        ? 'bg-purple-900/30 border border-purple-700/50'
+                        : message.type === 'system'
+                        ? 'bg-blue-900/30 border border-blue-700/50'
+                        : 'bg-gray-800'
+                    }`}
+                  >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <span className="font-semibold text-gray-300">{message.playerName}:</span>
-                        <span className="ml-2">{message.content}</span>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`font-medium ${
+                            message.playerName === 'DM' 
+                              ? 'text-purple-400' 
+                              : message.type === 'system'
+                              ? 'text-blue-400'
+                              : 'text-white'
+                          }`}>
+                            {message.playerName === 'DM' ? '🎭 DM' : message.playerName}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(message.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p className="text-gray-300 text-sm leading-relaxed">
+                          {message.content}
+                        </p>
                       </div>
-                      <span className="text-xs text-gray-500 ml-2 flex-shrink-0">
-                        {new Date(message.timestamp).toLocaleTimeString('en-US', { 
-                          hour: '2-digit', 
-                          minute: '2-digit',
-                          hour12: false
-                        })}
-                      </span>
                     </div>
                   </div>
                 ))}
               </div>
-
-              <div className="mt-4 text-xs text-gray-500 text-center">
-                Use the Action Input above to interact with the world and NPCs
+              
+              {/* Chat Input */}
+              <div className="p-4 bg-gray-800 border-t border-gray-700">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSendChat()}
+                    placeholder="Chat with other players..."
+                    className="flex-1 p-2 bg-gray-700 border border-gray-600 rounded text-white placeholder-gray-400 text-sm"
+                  />
+                  <button
+                    onClick={handleSendChat}
+                    disabled={!chatInput.trim()}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:text-gray-400 rounded text-sm transition-colors"
+                  >
+                    Send
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Sidebar */}
+          {/* Right Sidebar */}
           <div className="space-y-6">
-            {/* Character Info */}
-            {userCharacter ? (
+            {/* Player Character */}
+            {userCharacter && (
               <div className="bg-gray-900 p-4 rounded-lg">
-                <h3 className="font-semibold mb-3">Your Character</h3>
+                <h3 className="font-semibold mb-3">{userCharacter.name}</h3>
                 <div className="space-y-2 text-sm">
-                  <div className="font-medium">{userCharacter.name}</div>
-                  <div className="text-gray-400">
-                    Level {userCharacter.level} {userCharacter.race} {userCharacter.class}
+                  <div className="flex justify-between">
+                    <span>Level {userCharacter.level} {userCharacter.race} {userCharacter.class}</span>
                   </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-red-400">
-                        HP: {userCharacter.hitPoints.current}/{userCharacter.hitPoints.maximum}
-                      </span>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => updateCharacterHP(-1)}
-                          disabled={userCharacter.hitPoints.current <= 0}
-                          className="w-6 h-6 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 rounded text-xs font-bold transition-colors"
-                          title="Take 1 damage"
-                        >
-                          −
-                        </button>
-                        <button
-                          onClick={() => updateCharacterHP(1)}
-                          disabled={userCharacter.hitPoints.current >= userCharacter.hitPoints.maximum}
-                          className="w-6 h-6 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 rounded text-xs font-bold transition-colors"
-                          title="Heal 1 HP"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                    <div className={`w-full bg-gray-700 rounded-full h-2 overflow-hidden`}>
-                      <div 
-                        className={`h-full transition-all duration-300 ${
-                          userCharacter.hitPoints.current <= userCharacter.hitPoints.maximum * 0.25 
-                            ? 'bg-red-500' 
-                            : userCharacter.hitPoints.current <= userCharacter.hitPoints.maximum * 0.5
-                            ? 'bg-yellow-500'
-                            : 'bg-green-500'
-                        }`}
-                        style={{ 
-                          width: `${Math.max(0, (userCharacter.hitPoints.current / userCharacter.hitPoints.maximum) * 100)}%` 
-                        }}
-                      />
-                    </div>
+                  <div className="flex justify-between">
+                    <span>HP:</span>
+                    <span className="text-red-400">
+                      {userCharacter.hitPoints.current}/{userCharacter.hitPoints.maximum}
+                    </span>
                   </div>
-                  <div className="text-blue-400">
-                    AC: {userCharacter.armorClass}
+                  <div className="flex justify-between">
+                    <span>AC:</span>
+                    <span>{userCharacter.armorClass}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Prof Bonus:</span>
+                    <span>+{userCharacter.proficiencyBonus}</span>
                   </div>
                 </div>
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'character-profile' })}
-                    className="flex-1 p-2 bg-purple-600 hover:bg-purple-700 rounded transition-colors text-sm font-medium"
-                  >
-                    👤 Profile
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (userCharacter.hitPoints.current > 0) {
-                        alert('🚫 You can only edit your character sheet if your character has died (0 HP)');
-                        return;
-                      }
-                      dispatch({ type: 'SET_MODAL', payload: 'character-sheet' });
-                    }}
-                    className={`flex-1 p-2 rounded transition-colors text-sm ${
-                      userCharacter.hitPoints.current > 0 
-                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 hover:bg-gray-700 text-white'
-                    }`}
-                    title={userCharacter.hitPoints.current > 0 ? 'Character must die (0 HP) to edit sheet' : 'Edit character sheet'}
-                  >
-                    {userCharacter.hitPoints.current > 0 ? '🔒 Locked' : '📄 Edit Sheet'}
-                  </button>
-                </div>
-                
-                {/* Inventory Section */}
-                <div className="mt-4 space-y-2">
-                  <h4 className="font-medium text-purple-400">🎒 Inventory</h4>
-                  {userCharacter.equipment && (userCharacter.equipment?.length || 0) > 0 ? (
-                    <div className="space-y-1">
-                      {userCharacter.equipment?.slice(0, 5).map((item, index) => (
-                        <div key={index} className="flex items-center justify-between text-xs bg-gray-800 p-2 rounded">
-                          <div className="flex items-center space-x-2">
-                            <span className={`w-2 h-2 rounded-full ${
-                              item.type === 'weapon' ? 'bg-red-500' :
-                              item.type === 'armor' ? 'bg-blue-500' :
-                              item.type === 'tool' ? 'bg-yellow-500' :
-                              'bg-purple-500'
-                            }`}></span>
-                            <span className="text-white">{item.name}</span>
-                            {item.equipped && <span className="text-green-400">✓</span>}
-                          </div>
-                          <button
-                            onClick={() => {
-                              setActionInput(`I use my ${item.name}`);
-                            }}
-                            className="text-blue-400 hover:text-blue-300 text-xs"
-                          >
-                            Use
-                          </button>
-                        </div>
-                      ))}
-                      {(userCharacter.equipment?.length || 0) > 5 && (
-                        <div className="text-xs text-gray-500 text-center">
-                          +{(userCharacter.equipment?.length || 0) - 5} more items
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-500">No equipment yet</div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="bg-gray-900 p-4 rounded-lg">
-                <h3 className="font-semibold mb-3">⚔️ Character</h3>
-                <p className="text-gray-400 text-sm mb-4">
-                  Playing as: <span className="text-white font-medium">{playerName || "Anonymous Adventurer"}</span>
-                </p>
-                <button
-                  onClick={() => dispatch({ type: 'SET_PHASE', payload: 'character_creation' })}
-                  className="w-full p-3 bg-blue-600 hover:bg-blue-700 rounded transition-colors text-white font-medium"
-                >
-                  ⚔️ Create Character Sheet
-                </button>
-                <p className="text-xs text-gray-500 mt-2">
-                  Optional: Create a full D&D character with stats, backstory, and abilities
-                </p>
               </div>
             )}
 
-            {/* Enhanced Dice Results - Show recent automatic rolls with animations */}
+            {/* Dice Roller */}
+            <div className="bg-gray-900 p-4 rounded-lg">
+              <h3 className="font-semibold mb-3">🎲 Dice Roller</h3>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={diceInput}
+                  onChange={(e) => setDiceInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleRollDice()}
+                  placeholder="1d20"
+                  className="flex-1 p-2 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400 text-sm"
+                />
+                <button
+                  onClick={handleRollDice}
+                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm transition-colors"
+                >
+                  Roll
+                </button>
+              </div>
+              
+              {/* Quick Roll Buttons */}
+              <div className="grid grid-cols-2 gap-1 text-xs">
+                {['1d20', '1d12', '1d10', '1d8', '1d6', '1d4'].map((dice) => (
+                  <button
+                    key={dice}
+                    onClick={() => setDiceInput(dice)}
+                    className="p-1 bg-gray-800 hover:bg-gray-700 rounded transition-colors"
+                  >
+                    {dice}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Dice Rolls */}
             {diceRolls.length > 0 && (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-gray-900 p-4 rounded-lg border border-gray-700"
-              >
+              <div className="bg-gray-900 p-4 rounded-lg">
                 <h3 className="font-semibold mb-3 text-yellow-400">🎲 Recent Rolls</h3>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {diceRolls.slice(-6).map((roll, index) => (
-                    <motion.div 
-                      key={roll.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="text-sm bg-gray-800 p-3 rounded border-l-4 border-l-blue-500 hover:bg-gray-700 transition-colors"
-                    >
+                    <div key={roll.id} className="text-sm bg-gray-800 p-3 rounded border-l-4 border-l-blue-500">
                       <div className="flex items-center justify-between">
                         <div>
                           <span className="text-blue-400 font-medium">{roll.playerName}</span>
                           <span className="text-gray-400 mx-2">•</span>
                           <span className="text-yellow-400 font-mono">{roll.expression}</span>
-                          {roll.description && (
-                            <span className="text-gray-300 text-xs block mt-1">{roll.description}</span>
-                          )}
                         </div>
-                        <div className="text-right">
-                          <div className={`font-bold text-lg ${
-                            roll.success !== undefined ? 
-                              (roll.success ? 'text-green-400' : 'text-red-400') : 
-                              'text-white'
-                          }`}>
-                            {roll.total}
-                          </div>
-                          <div className="text-xs space-x-1">
-                            {roll.advantage && <span className="text-green-300">👍 ADV</span>}
-                            {roll.disadvantage && <span className="text-red-300">👎 DIS</span>}
-                            {roll.success !== undefined && (
-                              <div className={`${roll.success ? 'text-green-300' : 'text-red-300'} font-medium`}>
-                                DC {roll.difficulty} - {roll.success ? '✓ SUCCESS' : '✗ FAILED'}
-                              </div>
-                            )}
-                          </div>
+                        <div className={`font-bold text-lg ${
+                          roll.success !== undefined ? 
+                            (roll.success ? 'text-green-400' : 'text-red-400') : 
+                            'text-white'
+                        }`}>
+                          {roll.total}
                         </div>
                       </div>
-                      {roll.results && roll.results.length > 1 && (
-                        <div className="text-xs text-gray-400 mt-2">
-                          Individual rolls: [{roll.results.join(', ')}]
-                        </div>
-                      )}
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
-              </motion.div>
+              </div>
             )}
-
-            {/* Game Status */}
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <h3 className="font-semibold mb-3">Game Status</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Phase:</span>
-                  <span className="capitalize text-green-400">{state.phase}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">HUD:</span>
-                  <span className={state.showHUD ? 'text-green-400' : 'text-red-400'}>
-                    {state.showHUD ? 'Visible' : 'Hidden'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Auto-scroll:</span>
-                  <span className={state.chatAutoScroll ? 'text-green-400' : 'text-yellow-400'}>
-                    {state.chatAutoScroll ? 'ON' : 'OFF'}
-                  </span>
-                </div>
-                {state.inCombat && (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Combat:</span>
-                      <span className="text-red-400">Active ⚔️</span>
-                    </div>
-                    {state.currentTurn && (
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Turn:</span>
-                        <span className="text-yellow-400">{state.currentTurn}</span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {state.activeModal !== 'none' && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-400">Modal:</span>
-                    <span className="text-purple-400 capitalize">{state.activeModal.replace('-', ' ')}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* AI Debug Section */}
-            <div className="bg-gray-900 p-4 rounded-lg border border-yellow-600/30">
-              <h3 className="font-semibold mb-3 text-yellow-400">🔍 AI Debug Tracker</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto text-xs">
-                <div className="text-gray-400 mb-2">
-                  Current Turn: turn_{globalServerState.turnStartTime}
-                </div>
-                {debugPrompts.length === 0 ? (
-                  <div className="text-gray-500 italic">No prompts tracked yet</div>
-                ) : (
-                  debugPrompts.slice(-10).map((prompt) => {
-                    const isCurrentTurn = prompt.turnId === `turn_${globalServerState.turnStartTime}`;
-                    return (
-                      <div 
-                        key={prompt.id} 
-                        className={`p-2 rounded text-xs ${
-                          prompt.type === 'user_input' 
-                            ? 'bg-blue-900/30 border-l-2 border-blue-500' 
-                            : 'bg-purple-900/30 border-l-2 border-purple-500'
-                        } ${isCurrentTurn ? 'ring-1 ring-yellow-500' : ''}`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`font-medium ${
-                            prompt.type === 'user_input' ? 'text-blue-400' : 'text-purple-400'
-                          }`}>
-                            {prompt.type === 'user_input' ? '📤 User Input' : '🤖 AI Response'}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500">
-                              {new Date(prompt.timestamp).toLocaleTimeString('en-US', { 
-                                hour: '2-digit', 
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: false
-                              })}
-                            </span>
-                            {isCurrentTurn && <span className="text-yellow-400 text-xs">CURRENT</span>}
-                            {!prompt.processed && prompt.type === 'user_input' && 
-                              <span className="text-red-400 text-xs">NOT PROCESSED</span>
-                            }
-                          </div>
-                        </div>
-                        <div className="text-gray-300 break-words">
-                          {prompt.content.substring(0, 100)}
-                          {prompt.content.length > 100 && '...'}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Turn: {prompt.turnId.replace('turn_', '').substring(0, 8)}...
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              <div className="mt-2 pt-2 border-t border-gray-700 text-xs text-gray-400">
-                Inputs: {debugPrompts.filter(p => p.type === 'user_input').length} | 
-                Responses: {debugPrompts.filter(p => p.type === 'ai_response').length} | 
-                Unprocessed: {debugPrompts.filter(p => p.type === 'user_input' && !p.processed).length}
-              </div>
-            </div>
-
-            {/* Party */}
-            <div className="bg-gray-900 p-4 rounded-lg">
-              <h3 className="font-semibold mb-3">Party ({currentRoom?.players?.length || 0})</h3>
-              <div className="space-y-2">
-                {currentRoom?.players?.map((player) => (
-                  <div key={player.id} className="flex items-center justify-between text-sm">
-                    <span className={player.isOnline ? 'text-white' : 'text-gray-400'}>
-                      {player.character?.name || player.name}
-                      {player.role === 'dm' && ' 👑'}
-                      {player.id === playerId && ' (You)'}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {player.character && <span className="text-green-400 text-xs">✓</span>}
-                      <div className={`w-2 h-2 rounded-full ${
-                        player.isOnline ? 'bg-green-400' : 'bg-gray-400'
-                      }`}></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
 
-        {/* Character Sheet Modal */}
-        <AnimatePresence>
-          {state.activeModal === 'character-sheet' && userCharacter && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-              onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-            >
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0.9 }}
-                onClick={(e) => e.stopPropagation()}
-                className="max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-              >
-                <CharacterSheet
-                  character={userCharacter}
-                  onSave={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-                  onCancel={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-                  isEditing={true}
-                />
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Character Profile Modal */}
-        <AnimatePresence>
-          {state.activeModal === 'character-profile' && userCharacter && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-              onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-            >
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0.9 }}
-                onClick={(e) => e.stopPropagation()}
-                className="max-w-2xl w-full bg-gray-900 rounded-lg p-6"
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-white">👤 Character Profile</h2>
-                  <button
-                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-                    className="text-gray-400 hover:text-white text-2xl"
-                  >
-                    ×
-                  </button>
-                </div>
-                
-                <div className="space-y-6 text-white">
-                  {/* Character Header */}
-                  <div className="text-center pb-4 border-b border-gray-700">
-                    <h3 className="text-3xl font-bold text-purple-400">{userCharacter.name}</h3>
-                    <p className="text-lg text-gray-300 mt-2">
-                      Level {userCharacter.level} {userCharacter.race} {userCharacter.class}
-                    </p>
-                  </div>
-                  
-                  {/* Quick Stats */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-red-400 font-bold text-xl">
-                        {userCharacter.hitPoints.current}/{userCharacter.hitPoints.maximum}
-                      </div>
-                      <div className="text-xs text-gray-400">Hit Points</div>
-                    </div>
-                    <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-blue-400 font-bold text-xl">{userCharacter.armorClass}</div>
-                      <div className="text-xs text-gray-400">Armor Class</div>
-                    </div>
-                    <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-green-400 font-bold text-xl">+{userCharacter.proficiencyBonus}</div>
-                      <div className="text-xs text-gray-400">Proficiency</div>
-                    </div>
-                    <div className="bg-gray-800 p-3 rounded text-center">
-                      <div className="text-purple-400 font-bold text-xl">{userCharacter.equipment?.length || 0}</div>
-                      <div className="text-xs text-gray-400">Items</div>
-                    </div>
-                  </div>
-                  
-                  {/* Ability Scores */}
-                  <div>
-                    <h4 className="text-lg font-semibold mb-3 text-yellow-400">Ability Scores</h4>
-                    <div className="grid grid-cols-3 gap-3">
-                      {Object.entries(userCharacter.stats).map(([stat, value]) => (
-                        <div key={stat} className="bg-gray-800 p-2 rounded text-center">
-                          <div className="text-white font-bold">{value}</div>
-                          <div className="text-xs text-gray-400 capitalize">{stat.slice(0,3)}</div>
-                          <div className="text-xs text-gray-500">
-                            {Math.floor((value - 10) / 2) >= 0 ? '+' : ''}{Math.floor((value - 10) / 2)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Backstory */}
-                  {userCharacter.backstory && (
-                    <div>
-                      <h4 className="text-lg font-semibold mb-3 text-yellow-400">Backstory</h4>
-                      <div className="bg-gray-800 p-4 rounded">
-                        <p className="text-gray-300 text-sm leading-relaxed">{userCharacter.backstory}</p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Skills */}
-                  <div>
-                    <h4 className="text-lg font-semibold mb-3 text-yellow-400">Proficient Skills</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(userCharacter.skills || {})
-                        .filter(([_, proficient]) => proficient)
-                        .map(([skill]) => (
-                          <span key={skill} className="bg-blue-600 px-3 py-1 rounded-full text-xs">{skill}</span>
-                        ))}
-                    </div>
-                  </div>
-                  
-                  {/* Equipment */}
-                  {userCharacter.equipment && (userCharacter.equipment?.length || 0) > 0 && (
-                    <div>
-                      <h4 className="text-lg font-semibold mb-3 text-yellow-400">Equipment</h4>
-                      <div className="space-y-2 max-h-32 overflow-y-auto">
-                        {userCharacter.equipment?.map((item, index) => (
-                          <div key={index} className="flex items-center justify-between bg-gray-800 p-2 rounded text-sm">
-                            <div className="flex items-center space-x-2">
-                              <span className={`w-2 h-2 rounded-full ${
-                                item.type === 'weapon' ? 'bg-red-500' :
-                                item.type === 'armor' ? 'bg-blue-500' :
-                                item.type === 'tool' ? 'bg-yellow-500' :
-                                'bg-purple-500'
-                              }`}></span>
-                              <span>{item.name}</span>
-                            </div>
-                            {item.equipped && <span className="text-green-400 text-xs">Equipped</span>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Current Context Modal */}
-        <AnimatePresence>
-          {state.activeModal === 'current-context' && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-              onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-            >
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0.9 }}
-                onClick={(e) => e.stopPropagation()}
-                className="max-w-4xl w-full bg-gray-900 rounded-lg p-6 max-h-[80vh] overflow-y-auto"
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-white">📖 Current Context</h2>
-                  <button
-                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-                    className="text-gray-400 hover:text-white text-2xl"
-                  >
-                    ×
-                  </button>
-                </div>
-                
-                <div className="space-y-6 text-white">
-                  {/* Current Scene */}
-                  <div className="bg-gray-800 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-blue-400">🎭 Current Scene</h3>
-                    <p className="text-gray-300 leading-relaxed">
-                      {currentRoom?.gameState?.story?.sceneDescription || "You find yourself in The Eternal Tavern, a mystical gathering place where adventurers from across the realms come to share tales and embark on new quests."}
-                    </p>
-                  </div>
-
-                  {/* Location & Environment */}
-                  <div className="bg-gray-800 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-green-400">📍 Location</h3>
-                    <p className="text-gray-300">
-                      <strong>Current Location:</strong> {currentRoom?.gameState?.story?.location || "The Eternal Tavern"}
-                    </p>
-                    <p className="text-gray-300 mt-2">
-                      <strong>Environment:</strong> A warm, inviting tavern filled with the aroma of hearty meals and the gentle hum of conversation. Magical lanterns cast a soft glow, and ancient artifacts line the walls.
-                    </p>
-                  </div>
-
-                  {/* Active Players */}
-                  <div className="bg-gray-800 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-purple-400">👥 Active Adventurers</h3>
-                    <div className="space-y-2">
-                      {(currentRoom?.players || []).map((player) => (
-                        <div key={player.id} className="flex items-center justify-between bg-gray-700 p-2 rounded">
-                          <div className="flex items-center space-x-2">
-                            <div className={`w-2 h-2 rounded-full ${player.isOnline ? 'bg-green-400' : 'bg-gray-400'}`}></div>
-                            <span>{player.character?.name || player.name}</span>
-                            {player.id === playerId && <span className="text-yellow-400">(You)</span>}
-                          </div>
-                          <div className="text-sm text-gray-400">
-                            {player.character ? 
-                              `${player.character.race} ${player.character.class}` : 
-                              'No character created'
-                            }
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Game Status */}
-                  <div className="bg-gray-800 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-yellow-400">⚡ Game Status</h3>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-400">Turn Phase:</span>
-                        <span className="ml-2 text-white capitalize">{globalServerState.turnPhase.replace('_', ' ')}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Players Acting:</span>
-                        <span className="ml-2 text-white">{globalServerState.playersWhoActed}/{globalServerState.totalPlayers}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Your Status:</span>
-                        <span className="ml-2 text-white">
-                          {hasPlayerActedThisTurn ? '✅ Action Submitted' : '⏳ Awaiting Action'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Character:</span>
-                        <span className="ml-2 text-white">
-                          {userCharacter || state.playerCharacter ? '✅ Ready' : '❌ Not Created'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Recent Activity */}
-                  <div className="bg-gray-800 p-4 rounded-lg">
-                    <h3 className="text-lg font-semibold mb-3 text-red-400">📜 Recent Activity</h3>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {chatMessages.slice(-5).map((message) => (
-                        <div key={message.id} className="text-sm bg-gray-700 p-2 rounded">
-                          <span className="font-semibold text-gray-300">{message.playerName}:</span>
-                          <span className="ml-2 text-gray-400">{message.content}</span>
-                        </div>
-                      ))}
-                      {chatMessages.length === 0 && (
-                        <p className="text-gray-500 italic">No recent activity</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 text-center">
-                  <button
-                    onClick={() => dispatch({ type: 'SET_MODAL', payload: 'none' })}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded transition-colors"
-                  >
-                    Continue Adventure
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Combat Manager */}
+        <CombatManager
+          isVisible={showCombatManager}
+          onToggle={() => setShowCombatManager(!showCombatManager)}
+          onAddAction={gameStateManager.addAction}
+          playerId={playerId || 'unknown'}
+          playerName={playerName}
+          canAct={gameStateManager.canAddAction}
+        />
 
         {/* Authentication Modal */}
         <AuthModal
