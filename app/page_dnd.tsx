@@ -487,7 +487,7 @@ export default function DnDPlatform() {
             <div className="mt-6 bg-gray-900 p-4 rounded-lg">
               <h3 className="font-semibold mb-3">Party Members</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {currentRoom.players.filter(p => p.role === 'player').map((player) => (
+                {(currentRoom.players || []).filter(p => p.role === 'player').map((player) => (
                   <div key={player.id} className="bg-gray-800 p-3 rounded">
                     <div className="flex items-center justify-between">
                       <span className={player.isOnline ? 'text-white' : 'text-gray-400'}>
