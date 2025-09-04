@@ -56,7 +56,28 @@ export default function DnDPlatform() {
     processed: boolean;
   }>>([]);
 
-  const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8080/ws';
+  // WebSocket URL configuration with fallbacks
+  const getWebSocketUrl = () => {
+    // First check environment variable
+    if (process.env.NEXT_PUBLIC_WS_URL) {
+      console.log('🔗 Using configured WebSocket URL:', process.env.NEXT_PUBLIC_WS_URL);
+      return process.env.NEXT_PUBLIC_WS_URL;
+    }
+    
+    // Fallback for production deployment
+    if (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('railway.app'))) {
+      const prodUrl = 'wss://feriasencillabeta-production.up.railway.app/ws';
+      console.log('🔗 Using production fallback WebSocket URL:', prodUrl);
+      return prodUrl;
+    }
+    
+    // Local development fallback
+    const localUrl = 'ws://localhost:8080/ws';
+    console.log('🔗 Using local development WebSocket URL:', localUrl);
+    return localUrl;
+  };
+  
+  const wsUrl = getWebSocketUrl();
   
   const {
     status,

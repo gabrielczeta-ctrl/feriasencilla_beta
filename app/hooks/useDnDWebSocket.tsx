@@ -77,16 +77,33 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
   const maxReconnectAttempts = 5;
 
   const connect = useCallback((playerName: string) => {
-    if (status === 'connected' || !wsUrl) return;
+    if (status === 'connected') return;
+    
+    if (!wsUrl) {
+      console.error('❌ No WebSocket URL provided');
+      setStatus('disconnected');
+      return;
+    }
     
     console.log('🔄 Attempting to connect to D&D server:', wsUrl);
+    console.log('🔄 Player name:', playerName);
     setStatus('connecting');
     
     try {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          console.error('❌ WebSocket connection timeout after 10 seconds');
+          ws.close();
+          setStatus('disconnected');
+        }
+      }, 10000); // 10 second timeout
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         console.log('🎲 Connected to D&D server:', wsUrl);
         setStatus('connected');
         reconnectAttempts.current = 0;
@@ -110,6 +127,7 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
       };
 
       ws.onclose = (event) => {
+        clearTimeout(connectionTimeout);
         console.log('🔌 Disconnected from D&D server');
         console.log('Close event details:', {
           code: event.code,
@@ -125,9 +143,25 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
       };
 
       ws.onerror = (error) => {
+        clearTimeout(connectionTimeout);
         console.error('❌ WebSocket error:', error);
         console.error('❌ WebSocket URL:', wsUrl);
         console.error('❌ WebSocket ready state:', ws.readyState);
+        console.error('❌ Player name:', playerName);
+        
+        // Additional diagnostics
+        const readyStateNames = {
+          [WebSocket.CONNECTING]: 'CONNECTING',
+          [WebSocket.OPEN]: 'OPEN',
+          [WebSocket.CLOSING]: 'CLOSING',
+          [WebSocket.CLOSED]: 'CLOSED'
+        };
+        console.error('❌ WebSocket state name:', readyStateNames[ws.readyState] || 'UNKNOWN');
+        
+        // If connection fails during setup, mark as disconnected
+        if (ws.readyState === WebSocket.CLOSED) {
+          setStatus('disconnected');
+        }
       };
 
     } catch (error) {
