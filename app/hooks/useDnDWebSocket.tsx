@@ -490,12 +490,12 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
     // TEMPORARY FIX: Mock server response for AI integration testing
     // This simulates the missing 'action_processed' message that should come from the server
     setTimeout(() => {
-      if (wsRef.current && currentRoom && playerId) {
+      if (wsRef.current && playerId) {
         // Create mock player action message
         const playerActionMessage = {
           id: `action_${Date.now()}`,
           playerId: playerId,
-          playerName: currentRoom.players.find(p => p.id === playerId)?.character?.name || 'Player',
+          playerName: 'Player', // Simplified to avoid currentRoom access issues
           type: 'action',
           content: action,
           timestamp: Date.now()
@@ -519,6 +519,8 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
           timestamp: Date.now() + 1000
         };
         
+        console.log('🤖 Mock AI response generated:', dmResponse.content);
+        
         // Simulate the action_processed message the client expects
         handleMessage({
           type: 'action_processed',
@@ -527,7 +529,7 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         });
       }
     }, 2000); // 2 second delay to simulate server processing
-  }, [sendMessage, currentRoom, playerId]);
+  }, [sendMessage, playerId, handleMessage]);
 
   const rollDice = useCallback(async (expression: string, type: string = 'custom', description?: string): Promise<void> => {
     if (!sendMessage({
