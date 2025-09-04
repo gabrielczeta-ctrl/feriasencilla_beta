@@ -122,10 +122,11 @@ export default function DnDPlatform() {
   useEffect(() => {
     if (status === 'disconnected' && state.phase === 'login') {
       console.log('🔄 Auto-connecting to server for authentication...');
-      // Connect with a temporary name for authentication
-      connect('temp-user-for-auth');
+      // Connect with player name if available, otherwise temp name
+      const connectName = playerName.trim() || 'temp-user-for-auth';
+      connect(connectName);
     }
-  }, [status, state.phase, connect]);
+  }, [status, state.phase, connect, playerName]);
 
   // Send character to server when connection is established for guest users
   useEffect(() => {
@@ -136,6 +137,22 @@ export default function DnDPlatform() {
       });
     }
   }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter]);
+
+  // Handle authenticated user character loading and phase transitions
+  useEffect(() => {
+    if (isAuthenticated && status === 'connected') {
+      if (userCharacter) {
+        // User has a character, go to playing phase
+        console.log('✅ Authenticated user with character, entering playing phase');
+        dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
+        dispatch({ type: 'SET_PHASE', payload: 'playing' });
+      } else {
+        // User authenticated but no character, go to character creation
+        console.log('✅ Authenticated user without character, entering character creation');
+        dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
+      }
+    }
+  }, [isAuthenticated, userCharacter, status, dispatch]);
 
   // Auto-refresh rooms when in lobby
   useEffect(() => {
@@ -231,7 +248,13 @@ export default function DnDPlatform() {
     try {
       await login(username, password);
       setShowAuthModal(false);
-      // Will be handled by useEffect when userCharacter is available
+      setPlayerName(username);
+      // After login, reconnect with proper username
+      disconnect();
+      setTimeout(() => {
+        connect(username);
+        // Character will be loaded from server response, phase will be set based on character availability
+      }, 500);
     } catch (error) {
       throw error; // Let AuthModal handle the error
     }
@@ -241,7 +264,13 @@ export default function DnDPlatform() {
     try {
       await register(username, password);
       setShowAuthModal(false);
-      // After registration, show character creation
+      setPlayerName(username);
+      // After registration, reconnect with proper username
+      // Phase will be set automatically by useEffect based on character availability
+      disconnect();
+      setTimeout(() => {
+        connect(username);
+      }, 500);
     } catch (error) {
       throw error; // Let AuthModal handle the error
     }
