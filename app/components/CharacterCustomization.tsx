@@ -553,12 +553,12 @@ export default function CharacterCustomization({ character, onComplete, onCancel
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
               <span className="text-gray-400">Equipment selected:</span>
-              <span className="ml-2 text-white">{selectedEquipment.length}</span>
+              <span className="ml-2 text-white">{selectedEquipment?.length || 0}</span>
             </div>
             <div>
               <span className="text-gray-400">Traits selected:</span>
               <span className="ml-2 text-white">
-                {selectedTraits.positive.length + selectedTraits.negative.length + selectedTraits.quirks.length}
+                {(selectedTraits.positive?.length || 0) + (selectedTraits.negative?.length || 0) + (selectedTraits.quirks?.length || 0)}
               </span>
             </div>
           </div>

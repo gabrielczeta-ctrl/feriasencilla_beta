@@ -132,11 +132,11 @@ export default function GameHUD({ onToggleModal, onUpdateCharacterHP }: GameHUDP
       )}
 
       {/* Quick Equipment */}
-      {character.equipment && character.equipment.length > 0 && (
+      {character.equipment && (character.equipment?.length || 0) > 0 && (
         <div className="mb-3">
           <h4 className="text-purple-400 font-medium text-xs mb-2">🎒 Quick Items</h4>
           <div className="space-y-1 max-h-16 overflow-y-auto">
-            {character.equipment.slice(0, 3).map((item, index) => (
+            {character.equipment?.slice(0, 3).map((item, index) => (
               <div key={index} className="flex items-center justify-between text-xs bg-gray-800 p-1 rounded">
                 <div className="flex items-center space-x-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${
@@ -150,9 +150,9 @@ export default function GameHUD({ onToggleModal, onUpdateCharacterHP }: GameHUDP
                 </div>
               </div>
             ))}
-            {character.equipment.length > 3 && (
+            {(character.equipment?.length || 0) > 3 && (
               <div className="text-xs text-gray-500 text-center">
-                +{character.equipment.length - 3} more
+                +{(character.equipment?.length || 0) - 3} more
               </div>
             )}
           </div>

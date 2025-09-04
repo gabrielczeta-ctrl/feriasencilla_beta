@@ -466,7 +466,7 @@ export default function DnDPlatform() {
             <div>
               <h1 className="text-3xl font-bold">⚔️ Character Creation</h1>
               <p className="text-gray-400 mt-1">
-                Campaign: {currentRoom?.name} | Players: {currentRoom?.players.length}/{currentRoom?.maxPlayers}
+                Campaign: {currentRoom?.name} | Players: {currentRoom?.players?.length || 0}/{currentRoom?.maxPlayers}
               </p>
             </div>
             <button
