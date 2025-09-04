@@ -77,7 +77,9 @@ export default function DnDPlatform() {
     updateCharacter,
     sendPlayerAction,
     rollDice,
-    sendChatMessage
+    sendChatMessage,
+    generateEquipment,
+    generateLoot
   } = useDnDWebSocket(wsUrl);
 
   // Update global server state when hook state changes
@@ -845,6 +847,58 @@ export default function DnDPlatform() {
                       Say
                     </button>
                   </div>
+                </div>
+
+                {/* LLM Generation Test Section */}
+                <div className="mt-6 border-t border-gray-700 pt-4">
+                  <h4 className="text-md font-semibold mb-3 text-yellow-400">🤖 AI Generation (Test with Railway)</h4>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (userCharacter) {
+                          generateEquipment(userCharacter);
+                          console.log('🎒 Requesting equipment generation for:', userCharacter.name);
+                        } else {
+                          console.warn('No character to generate equipment for');
+                        }
+                      }}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm transition-colors"
+                      disabled={!userCharacter}
+                    >
+                      🎒 Generate Equipment
+                    </button>
+                    <button
+                      onClick={() => {
+                        const context = {
+                          currentScene: "The Eternal Tavern",
+                          averageLevel: 1,
+                          recentActions: "Exploring the mysterious tavern"
+                        };
+                        generateLoot(context, 'normal');
+                        console.log('💰 Requesting loot generation for context:', context);
+                      }}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded text-sm transition-colors"
+                    >
+                      💰 Generate Loot
+                    </button>
+                    <button
+                      onClick={() => {
+                        const context = {
+                          currentScene: "Dangerous Dragon Lair",
+                          averageLevel: 3,
+                          recentActions: "Defeating the dragon"
+                        };
+                        generateLoot(context, 'hard');
+                        console.log('🐉 Requesting epic loot generation');
+                      }}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition-colors"
+                    >
+                      🐉 Epic Loot
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    These buttons test the LLM integration with the Railway deployment (real Claude API)
+                  </p>
                 </div>
               </div>
             </div>

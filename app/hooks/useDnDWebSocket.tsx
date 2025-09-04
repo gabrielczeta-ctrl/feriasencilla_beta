@@ -41,6 +41,8 @@ interface DnDWebSocketState {
   rollDice: (expression: string, type?: string, description?: string) => Promise<void>;
   sendChatMessage: (message: string, type?: string) => Promise<void>;
   sendDMAction: (action: any) => Promise<void>;
+  generateEquipment: (character: Character) => Promise<void>;
+  generateLoot: (context: any, difficulty?: string) => Promise<void>;
 }
 
 interface CreateRoomData {
@@ -321,6 +323,24 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         });
         break;
 
+      case 'equipment_generated':
+        // Handle generated equipment - could be used to update character inventory
+        console.log('🎒 Equipment generated:', message.equipment);
+        // You can dispatch this to a context or state manager
+        break;
+
+      case 'loot_generated':
+        // Handle generated loot - broadcast to all players
+        console.log('💰 Loot generated:', message.loot);
+        setChatMessages(prev => [...prev, {
+          id: `loot_${Date.now()}`,
+          content: `🎁 Treasure discovered! ${message.loot.currency?.gold || 0} gold pieces and ${message.loot.equipment?.length || 0} items found!`,
+          playerName: 'DM',
+          type: 'system',
+          timestamp: Date.now()
+        }]);
+        break;
+
       case 'chat_message':
         setChatMessages(prev => {
           const newMessages = [...prev, message.message];
@@ -530,6 +550,25 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
     }
   }, [sendMessage]);
 
+  const generateEquipment = useCallback(async (character: Character): Promise<void> => {
+    if (!sendMessage({
+      type: 'generate_equipment',
+      character
+    })) {
+      throw new Error('Not connected to server');
+    }
+  }, [sendMessage]);
+
+  const generateLoot = useCallback(async (context: any, difficulty: string = 'normal'): Promise<void> => {
+    if (!sendMessage({
+      type: 'generate_loot',
+      context,
+      difficulty
+    })) {
+      throw new Error('Not connected to server');
+    }
+  }, [sendMessage]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -560,6 +599,8 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
     sendPlayerAction,
     rollDice,
     sendChatMessage,
-    sendDMAction
+    sendDMAction,
+    generateEquipment,
+    generateLoot
   };
 }

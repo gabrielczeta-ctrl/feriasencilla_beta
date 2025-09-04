@@ -372,6 +372,165 @@ Response format (JSON):
     }
   }
 
+  // Generate contextual equipment for characters
+  async generateCharacterEquipment(character) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return this.getFallbackEquipment(character);
+    }
+
+    try {
+      const prompt = `You are a D&D 5e equipment specialist. Generate starting equipment for this character:
+
+Character: ${character.name}
+Race: ${character.race}
+Class: ${character.class}
+Background: ${character.backstory || 'Unknown'}
+Level: ${character.level || 1}
+
+Create appropriate starting equipment including:
+1. Weapons (based on class proficiencies)
+2. Armor (appropriate AC for level)
+3. Tools (based on background/class)
+4. Miscellaneous items (flavorful and useful)
+
+Response format (JSON):
+{
+  "weapons": [{"name": "...", "damage": "1d8", "type": "sword", "properties": ["versatile"]}],
+  "armor": [{"name": "...", "ac": 12, "type": "light", "properties": []}],
+  "tools": [{"name": "...", "type": "tool", "uses": "..."}],
+  "miscItems": [{"name": "...", "description": "...", "quantity": 1}],
+  "gold": 50,
+  "backstoryItem": {"name": "...", "description": "A special item tied to character's history"}
+}
+
+Keep equipment balanced for level ${character.level || 1}. Include one unique backstory-related item.`;
+
+      const response = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 600,
+        temperature: 0.7,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const content = response.content[0].text;
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        const equipment = JSON.parse(jsonMatch[0]);
+        console.log(`🎒 Generated equipment for ${character.name}: ${equipment.weapons?.length || 0} weapons, ${equipment.armor?.length || 0} armor pieces`);
+        return equipment;
+      } else {
+        console.warn('⚠️ Failed to parse equipment JSON, using fallback');
+        return this.getFallbackEquipment(character);
+      }
+    } catch (error) {
+      console.error('❌ Claude equipment generation error:', error.message);
+      return this.getFallbackEquipment(character);
+    }
+  }
+
+  // Generate contextual loot/treasure
+  async generateLoot(context, difficulty = 'normal') {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return this.getFallbackLoot(difficulty);
+    }
+
+    try {
+      const prompt = `Generate appropriate D&D 5e loot for this scenario:
+
+Context: ${context.currentScene || 'Unknown location'}
+Party Level: ${context.averageLevel || 1}
+Difficulty: ${difficulty}
+Recent Actions: ${context.recentActions || 'Exploration'}
+
+Create a loot table with:
+1. Currency (appropriate for difficulty)
+2. Equipment (weapons, armor, tools)
+3. Consumables (potions, scrolls)
+4. Treasure items (gems, art objects)
+5. One special/magical item (if appropriate)
+
+Response format (JSON):
+{
+  "currency": {"gold": 25, "silver": 50, "copper": 100},
+  "equipment": [{"name": "...", "type": "weapon/armor/tool", "value": 15}],
+  "consumables": [{"name": "Potion of Healing", "effect": "Heal 2d4+2 HP", "quantity": 2}],
+  "treasure": [{"name": "Ruby", "value": 50, "description": "A brilliant red gem"}],
+  "specialItem": {"name": "...", "description": "...", "properties": "...", "rarity": "uncommon"}
+}
+
+Balance for party level ${context.averageLevel || 1}.`;
+
+      const response = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 500,
+        temperature: 0.8,
+        messages: [{ role: 'user', content: prompt }]
+      });
+
+      const content = response.content[0].text;
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      
+      if (jsonMatch) {
+        const loot = JSON.parse(jsonMatch[0]);
+        console.log(`💰 Generated loot: ${loot.currency?.gold || 0} gold, ${loot.equipment?.length || 0} items`);
+        return loot;
+      } else {
+        return this.getFallbackLoot(difficulty);
+      }
+    } catch (error) {
+      console.error('❌ Claude loot generation error:', error.message);
+      return this.getFallbackLoot(difficulty);
+    }
+  }
+
+  // Fallback equipment when LLM is unavailable
+  getFallbackEquipment(character) {
+    const baseEquipment = {
+      weapons: [{ name: "Simple Sword", damage: "1d8", type: "sword", properties: [] }],
+      armor: [{ name: "Leather Armor", ac: 11, type: "light", properties: [] }],
+      tools: [{ name: "Adventuring Kit", type: "tool", uses: "General exploration" }],
+      miscItems: [
+        { name: "Backpack", description: "A sturdy leather backpack", quantity: 1 },
+        { name: "Rations", description: "One day's food", quantity: 3 },
+        { name: "Waterskin", description: "Holds water for travel", quantity: 1 }
+      ],
+      gold: 50,
+      backstoryItem: { name: "Lucky Charm", description: "A small token from your past" }
+    };
+
+    // Customize based on class
+    if (character.class?.toLowerCase().includes('fighter')) {
+      baseEquipment.weapons.push({ name: "Shield", damage: "+2 AC", type: "shield", properties: [] });
+      baseEquipment.armor = [{ name: "Chain Mail", ac: 16, type: "heavy", properties: [] }];
+    } else if (character.class?.toLowerCase().includes('rogue')) {
+      baseEquipment.weapons.push({ name: "Dagger", damage: "1d4", type: "dagger", properties: ["finesse", "light"] });
+      baseEquipment.tools.push({ name: "Thieves' Tools", type: "tool", uses: "Lock picking and trap disarming" });
+    } else if (character.class?.toLowerCase().includes('wizard')) {
+      baseEquipment.weapons = [{ name: "Quarterstaff", damage: "1d6", type: "staff", properties: ["versatile"] }];
+      baseEquipment.miscItems.push({ name: "Spellbook", description: "Contains your known spells", quantity: 1 });
+    }
+
+    return baseEquipment;
+  }
+
+  getFallbackLoot(difficulty) {
+    const base = {
+      currency: { gold: 10, silver: 25, copper: 50 },
+      equipment: [{ name: "Iron Dagger", type: "weapon", value: 2 }],
+      consumables: [{ name: "Healing Potion", effect: "Heal 2d4+2 HP", quantity: 1 }],
+      treasure: [{ name: "Small Gem", value: 10, description: "A small but valuable stone" }],
+      specialItem: null
+    };
+
+    if (difficulty === 'hard') {
+      base.currency.gold *= 3;
+      base.specialItem = { name: "Magic Ring", description: "+1 to saving throws", rarity: "uncommon" };
+    }
+
+    return base;
+  }
+
   // Fallback responses when Claude API is unavailable
   getFallbackCampaignStory(description, roomName) {
     const scenarios = [

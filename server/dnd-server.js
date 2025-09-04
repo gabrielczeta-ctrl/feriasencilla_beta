@@ -192,6 +192,14 @@ async function handleMessage(ws, msg, ip) {
       await handleDiceRoll(ws, msg, ip);
       break;
       
+    case "generate_equipment":
+      await handleGenerateEquipment(ws, msg, ip);
+      break;
+
+    case "generate_loot":
+      await handleGenerateLoot(ws, msg, ip);
+      break;
+      
     case "chat_message":
       await handleChatMessage(ws, msg, ip);
       break;
@@ -912,6 +920,81 @@ function parseDiceExpression(expression) {
   }
 
   return { valid, rolls: allRolls, total };
+}
+
+// Generate equipment for character using Claude AI
+async function handleGenerateEquipment(ws, msg, ip) {
+  if (!ws.playerId) {
+    ws.send(JSON.stringify({
+      type: "error",
+      message: "Not authenticated"
+    }));
+    return;
+  }
+
+  try {
+    console.log(`🎒 Generating equipment for character: ${msg.character?.name || 'Unknown'}`);
+    
+    const equipment = await claudeDM.generateCharacterEquipment(msg.character);
+    
+    ws.send(JSON.stringify({
+      type: "equipment_generated",
+      equipment: equipment,
+      timestamp: Date.now()
+    }));
+
+    console.log(`✅ Equipment generated for ${msg.character?.name}: ${equipment.weapons?.length || 0} weapons, ${equipment.armor?.length || 0} armor pieces`);
+
+  } catch (error) {
+    console.error('❌ Equipment generation error:', error);
+    ws.send(JSON.stringify({
+      type: "error",
+      message: "Failed to generate equipment"
+    }));
+  }
+}
+
+// Generate contextual loot using Claude AI  
+async function handleGenerateLoot(ws, msg, ip) {
+  if (!ws.playerId) {
+    ws.send(JSON.stringify({
+      type: "error", 
+      message: "Not authenticated"
+    }));
+    return;
+  }
+
+  try {
+    console.log(`💰 Generating loot for context: ${msg.context?.currentScene || 'Unknown'}`);
+    
+    const loot = await claudeDM.generateLoot(msg.context, msg.difficulty || 'normal');
+    
+    // Broadcast loot to all players in the session
+    if (globalGameManager) {
+      globalGameManager.broadcastToAll({
+        type: "loot_generated",
+        loot: loot,
+        context: msg.context,
+        difficulty: msg.difficulty || 'normal',
+        timestamp: Date.now()
+      });
+    } else {
+      ws.send(JSON.stringify({
+        type: "loot_generated", 
+        loot: loot,
+        timestamp: Date.now()
+      }));
+    }
+
+    console.log(`✅ Loot generated: ${loot.currency?.gold || 0} gold, ${loot.equipment?.length || 0} items`);
+
+  } catch (error) {
+    console.error('❌ Loot generation error:', error);
+    ws.send(JSON.stringify({
+      type: "error",
+      message: "Failed to generate loot"
+    }));
+  }
 }
 
 function createRoom(roomId, roomData) {
