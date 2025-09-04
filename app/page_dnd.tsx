@@ -639,7 +639,7 @@ export default function DnDPlatform() {
                   onChange={(e) => setActionInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSendAction()}
                   placeholder={
-                    !userCharacter
+                    (!userCharacter && !state.playerCharacter)
                       ? "Create a character first to participate in the adventure..."
                       : hasPlayerActedThisTurn 
                       ? "You've already acted this turn. Wait for DM response..." 
@@ -649,18 +649,18 @@ export default function DnDPlatform() {
                   }
                   className="flex-1 p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
                   maxLength={500}
-                  disabled={!userCharacter || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
+                  disabled={(!userCharacter && !state.playerCharacter) || hasPlayerActedThisTurn || globalServerState.turnPhase !== 'player_turns'}
                 />
                 <button
                   onClick={handleSendAction}
                   disabled={
-                    !userCharacter ||
+                    (!userCharacter && !state.playerCharacter) ||
                     !actionInput.trim() || 
                     hasPlayerActedThisTurn || 
                     globalServerState.turnPhase !== 'player_turns'
                   }
                   className={`px-6 py-3 rounded transition-colors font-semibold ${
-                    !userCharacter
+                    (!userCharacter && !state.playerCharacter)
                       ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       : hasPlayerActedThisTurn
                         ? 'bg-green-600 text-white cursor-default'
@@ -671,7 +671,7 @@ export default function DnDPlatform() {
                             : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   }`}
                 >
-                  {!userCharacter ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Send'}
+                  {(!userCharacter && !state.playerCharacter) ? '👤 Need Character' : hasPlayerActedThisTurn ? '✅ Sent' : globalServerState.turnPhase !== 'player_turns' ? '⏳ Wait' : 'Send'}
                 </button>
               </div>
             </div>

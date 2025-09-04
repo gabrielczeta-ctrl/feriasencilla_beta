@@ -413,6 +413,65 @@ export default function CharacterCustomization({ character, onComplete, onCancel
     }
   };
 
+  // Drag and drop handlers
+  const handleDragStart = (e: React.DragEvent, item: string) => {
+    e.dataTransfer.setData('text/plain', item);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDropOnSlot = (e: React.DragEvent, targetSlot: 'mainhand' | 'offhand' | 'inventory') => {
+    e.preventDefault();
+    const item = e.dataTransfer.getData('text/plain');
+    const itemType = getEquipmentHandedness(item);
+    
+    setSelectedEquipment(prev => {
+      // Remove item from current location
+      const newState = {
+        mainhand: prev.mainhand === item ? null : prev.mainhand,
+        offhand: prev.offhand === item ? null : prev.offhand,
+        inventory: prev.inventory.filter(i => i !== item)
+      };
+      
+      // Add to new location based on target slot and item compatibility
+      if (targetSlot === 'mainhand') {
+        if (itemType === 'two-handed') {
+          newState.mainhand = item;
+          newState.offhand = null; // Clear offhand for two-handed weapons
+        } else {
+          newState.mainhand = item;
+        }
+      } else if (targetSlot === 'offhand' && itemType !== 'two-handed') {
+        // Can't equip two-handed items in offhand
+        if (newState.mainhand && getEquipmentHandedness(newState.mainhand) === 'two-handed') {
+          // Can't use offhand with two-handed weapon in mainhand
+          alert('Cannot use off hand while wielding a two-handed weapon!');
+          return prev;
+        } else {
+          newState.offhand = item;
+        }
+      } else if (targetSlot === 'inventory') {
+        if (newState.inventory.length < 20) {
+          newState.inventory = [...newState.inventory, item];
+        } else {
+          alert('🎒 Inventory full! You can only carry 20 items.');
+          return prev;
+        }
+      } else {
+        // Invalid drop target, return item to inventory if possible
+        if (newState.inventory.length < 20) {
+          newState.inventory = [...newState.inventory, item];
+        } else {
+          return prev; // Can't place anywhere
+        }
+      }
+      
+      return newState;
+    });
+  };
+
   const handleTraitToggle = (category: keyof CharacterTraits, trait: string) => {
     setSelectedTraits(prev => ({
       ...prev,
@@ -544,53 +603,86 @@ export default function CharacterCustomization({ character, onComplete, onCancel
           <p className="text-gray-400">Level {character.level} {character.race} {character.class}</p>
         </div>
 
-        {/* Equipment Slots Display */}
+        {/* Equipment Slots Display - Now Draggable! */}
         <div className="mb-8 bg-gray-800 p-4 rounded-lg">
-          <h3 className="text-lg font-semibold mb-4 text-yellow-400">⚔️ Equipment Slots</h3>
+          <h3 className="text-lg font-semibold mb-4 text-yellow-400">⚔️ Equipment Slots (Drag & Drop)</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Main Hand */}
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+            <div 
+              className="bg-gray-700 p-3 rounded border-2 border-gray-600 hover:border-blue-500 transition-colors min-h-[80px]"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropOnSlot(e, 'mainhand')}
+            >
               <h4 className="text-sm font-medium text-blue-400 mb-2">🗡️ Main Hand</h4>
               {selectedEquipment.mainhand ? (
-                <div className="text-white text-sm bg-blue-900/30 p-2 rounded">
+                <div 
+                  className="text-white text-sm bg-blue-900/30 p-2 rounded cursor-move"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, selectedEquipment.mainhand!)}
+                >
                   {selectedEquipment.mainhand}
                   {getEquipmentHandedness(selectedEquipment.mainhand) === 'two-handed' && (
                     <span className="text-yellow-400 text-xs block">(Two-Handed)</span>
                   )}
                 </div>
               ) : (
-                <div className="text-gray-400 text-sm italic p-2">Empty</div>
+                <div className="text-gray-400 text-sm italic p-2 border-2 border-dashed border-gray-600 rounded">
+                  Drop weapon here
+                </div>
               )}
             </div>
             
             {/* Off Hand */}
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+            <div 
+              className="bg-gray-700 p-3 rounded border-2 border-gray-600 hover:border-green-500 transition-colors min-h-[80px]"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropOnSlot(e, 'offhand')}
+            >
               <h4 className="text-sm font-medium text-green-400 mb-2">🛡️ Off Hand</h4>
               {selectedEquipment.offhand ? (
-                <div className="text-white text-sm bg-green-900/30 p-2 rounded">
+                <div 
+                  className="text-white text-sm bg-green-900/30 p-2 rounded cursor-move"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, selectedEquipment.offhand!)}
+                >
                   {selectedEquipment.offhand}
                 </div>
               ) : selectedEquipment.mainhand && getEquipmentHandedness(selectedEquipment.mainhand) === 'two-handed' ? (
-                <div className="text-yellow-400 text-sm italic p-2">Occupied by two-handed weapon</div>
+                <div className="text-yellow-400 text-sm italic p-2 border-2 border-dashed border-yellow-600 rounded">
+                  Occupied by two-handed weapon
+                </div>
               ) : (
-                <div className="text-gray-400 text-sm italic p-2">Empty</div>
+                <div className="text-gray-400 text-sm italic p-2 border-2 border-dashed border-gray-600 rounded">
+                  Drop item here
+                </div>
               )}
             </div>
             
             {/* Inventory */}
-            <div className="bg-gray-700 p-3 rounded border border-gray-600">
+            <div 
+              className="bg-gray-700 p-3 rounded border-2 border-gray-600 hover:border-purple-500 transition-colors min-h-[80px]"
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropOnSlot(e, 'inventory')}
+            >
               <h4 className="text-sm font-medium text-purple-400 mb-2">🎒 Inventory ({selectedEquipment.inventory.length}/20)</h4>
               <div className="max-h-20 overflow-y-auto">
                 {selectedEquipment.inventory.length > 0 ? (
                   <div className="space-y-1">
                     {selectedEquipment.inventory.map((item, index) => (
-                      <div key={index} className="text-white text-xs bg-purple-900/30 p-1 rounded">
+                      <div 
+                        key={index} 
+                        className="text-white text-xs bg-purple-900/30 p-1 rounded cursor-move"
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, item)}
+                      >
                         {item}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-gray-400 text-sm italic p-2">Empty</div>
+                  <div className="text-gray-400 text-sm italic p-2 border-2 border-dashed border-gray-600 rounded">
+                    Drop items here (20 max)
+                  </div>
                 )}
               </div>
             </div>
@@ -609,14 +701,21 @@ export default function CharacterCustomization({ character, onComplete, onCancel
                 </h4>
                 <div className="grid grid-cols-1 gap-2">
                   {equipment[category as keyof StartingEquipment].map(item => (
-                    <label key={item} className="flex items-center space-x-2 cursor-pointer bg-gray-800 p-2 rounded hover:bg-gray-700">
+                    <label key={item} className="flex items-center space-x-2 cursor-pointer bg-gray-800 p-2 rounded hover:bg-gray-700 transition-colors">
                       <input
                         type="checkbox"
                         checked={selectedEquipment.mainhand === item || selectedEquipment.offhand === item || selectedEquipment.inventory.includes(item)}
                         onChange={() => handleEquipmentToggle(item)}
                         className="rounded border-gray-600 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="text-sm">{item}</span>
+                      <span 
+                        className="text-sm flex-1 cursor-move" 
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, item)}
+                        title="Drag to equipment slots or click checkbox to auto-equip"
+                      >
+                        🔹 {item}
+                      </span>
                     </label>
                   ))}
                 </div>

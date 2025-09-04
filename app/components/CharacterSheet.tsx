@@ -207,17 +207,7 @@ export default function CharacterSheet({ character, onSave, onCancel, isEditing 
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Level</label>
-            <input
-              type="number"
-              min="1"
-              max="20"
-              value={formData.level}
-              onChange={(e) => setFormData(prev => ({ ...prev, level: parseInt(e.target.value) }))}
-              className="w-full p-3 bg-gray-800 border border-gray-700 rounded focus:border-blue-500 focus:outline-none"
-            />
-          </div>
+          {/* Level is fixed at 1 for new characters */}
 
           <div>
             <label className="block text-sm font-medium mb-1">Backstory</label>
