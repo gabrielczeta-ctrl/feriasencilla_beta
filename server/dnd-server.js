@@ -86,6 +86,14 @@ const server = http.createServer((req, res) => {
     }));
     return;
   }
+  
+  // Don't respond to /ws requests - let them be handled by the upgrade handler
+  if (req.url === "/ws") {
+    res.writeHead(400, { "content-type": "text/plain" });
+    res.end("WebSocket endpoint - use WebSocket connection");
+    return;
+  }
+  
   res.writeHead(200, { "content-type": "text/plain" });
   res.end("D&D Platform WebSocket Server");
 });
