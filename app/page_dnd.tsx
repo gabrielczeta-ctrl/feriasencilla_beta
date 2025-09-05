@@ -265,12 +265,16 @@ export default function DnDPlatform() {
       console.log(`🐾 Generated guest critter for ${playerName.trim()}: ${critterCharacter.name} (${critterCharacter.race})`);
       
       // Ensure clean state before connecting
-      console.log('🔄 Starting fresh connection for:', playerName.trim());
+      console.log('🔄 Starting fresh guest connection for:', playerName.trim());
+      console.log('🔄 Current status before disconnect:', status);
       disconnect(); // Clean up any existing connection
       
       setTimeout(() => {
+        console.log('🔄 Calling connect() for guest user:', playerName.trim());
+        console.log('🔄 wsUrl available:', wsUrl);
         // Connect with the player name
         connect(playerName.trim());
+        console.log('🔄 connect() call completed');
         // Phase will be set to playing once connected since we already have a character
       }, 100);
     }
@@ -608,10 +612,13 @@ export default function DnDPlatform() {
             <button
               onClick={() => {
                 console.log('🔐 Opening auth modal, current status:', status);
+                console.log('🔐 wsUrl for auth connection:', wsUrl);
                 // Establish connection before showing auth modal
                 if (status !== 'connected') {
                   console.log('🔄 Pre-connecting for authentication...');
+                  console.log('🔄 Calling connect() with temp user');
                   connect('temp-auth-user');
+                  console.log('🔄 Pre-connect call completed');
                 }
                 setShowAuthModal(true);
               }}
@@ -638,13 +645,47 @@ export default function DnDPlatform() {
             )}
             
             {process.env.NODE_ENV === 'development' && (
-              <button
-                onClick={handleForceReset}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                🔄 Reset Connection (Debug)
-              </button>
+              <div className="space-y-1">
+                <button
+                  onClick={handleForceReset}
+                  className="block text-xs text-red-400 hover:text-red-300 transition-colors"
+                >
+                  🔄 Reset Connection (Debug)
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('🧪 Testing direct WebSocket connection...');
+                    try {
+                      const testWs = new WebSocket(wsUrl);
+                      testWs.onopen = () => {
+                        console.log('✅ Direct WebSocket test successful');
+                        testWs.close();
+                      };
+                      testWs.onerror = (error) => {
+                        console.error('❌ Direct WebSocket test failed:', error);
+                      };
+                    } catch (error) {
+                      console.error('❌ WebSocket creation failed:', error);
+                    }
+                  }}
+                  className="block text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  🧪 Test Direct WS (Debug)
+                </button>
+              </div>
             )}
+
+            {/* Always show connection test button for debugging */}
+            <button
+              onClick={() => {
+                console.log('🧪 Manual connection test, current status:', status);
+                console.log('🧪 wsUrl:', wsUrl);
+                connect('manual-test-user');
+              }}
+              className="text-xs text-gray-400 hover:text-gray-300 transition-colors mt-2"
+            >
+              🔗 Manual Connect Test
+            </button>
           </div>
         </motion.div>
         
