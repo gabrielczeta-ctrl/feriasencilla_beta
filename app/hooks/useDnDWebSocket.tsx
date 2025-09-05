@@ -87,6 +87,8 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
     
     console.log('🔄 Attempting to connect to D&D server:', wsUrl);
     console.log('🔄 Player name:', playerName);
+    console.log('🔄 WebSocket supported:', typeof WebSocket !== 'undefined');
+    console.log('🔄 Current location:', typeof window !== 'undefined' ? window.location.href : 'server-side');
     setStatus('connecting');
     
     try {

@@ -60,27 +60,32 @@ export default function DnDPlatform() {
   const getWebSocketUrl = () => {
     console.log('🔗 Environment check:', {
       NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
+      NODE_ENV: process.env.NODE_ENV,
       hostname: typeof window !== 'undefined' ? window.location.hostname : 'server-side',
       href: typeof window !== 'undefined' ? window.location.href : 'server-side'
     });
     
-    // First check environment variable
-    if (process.env.NEXT_PUBLIC_WS_URL) {
-      console.log('🔗 Using configured WebSocket URL:', process.env.NEXT_PUBLIC_WS_URL);
-      return process.env.NEXT_PUBLIC_WS_URL;
-    }
-    
-    // Fallback for production deployment
-    if (typeof window !== 'undefined' && (window.location.hostname.includes('vercel.app') || window.location.hostname.includes('railway.app'))) {
+    // For production deployment, ALWAYS use Railway regardless of env var
+    if (typeof window !== 'undefined' && (
+      window.location.hostname.includes('vercel.app') || 
+      window.location.hostname.includes('railway.app') ||
+      process.env.NODE_ENV === 'production'
+    )) {
       const prodUrl = 'wss://feriasencillabeta-production.up.railway.app/ws';
-      console.log('🔗 Using production fallback WebSocket URL:', prodUrl);
+      console.log('🔗 FORCING production Railway WebSocket URL:', prodUrl);
       return prodUrl;
     }
     
-    // Local development fallback
-    const localUrl = 'ws://localhost:8080/ws';
-    console.log('🔗 Using local development WebSocket URL:', localUrl);
-    return localUrl;
+    // Check environment variable for local development
+    if (process.env.NEXT_PUBLIC_WS_URL && process.env.NEXT_PUBLIC_WS_URL.includes('localhost')) {
+      console.log('🔗 Using local development WebSocket URL from env:', process.env.NEXT_PUBLIC_WS_URL);
+      return process.env.NEXT_PUBLIC_WS_URL;
+    }
+    
+    // Default to Railway for any other case
+    const railwayUrl = 'wss://feriasencillabeta-production.up.railway.app/ws';
+    console.log('🔗 Using Railway WebSocket URL as final fallback:', railwayUrl);
+    return railwayUrl;
   };
   
   const wsUrl = getWebSocketUrl();
