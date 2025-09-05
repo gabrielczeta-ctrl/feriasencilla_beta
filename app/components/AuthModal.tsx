@@ -8,9 +8,10 @@ interface AuthModalProps {
   onClose: () => void;
   onLogin: (username: string, password: string) => Promise<void>;
   onRegister: (username: string, password: string) => Promise<void>;
+  connectionStatus?: 'connected' | 'connecting' | 'disconnected';
 }
 
-export default function AuthModal({ isOpen, onClose, onLogin, onRegister }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, onLogin, onRegister, connectionStatus = 'disconnected' }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +42,11 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }: Auth
 
     if (!isLogin && password !== confirmPassword) {
       setError('Passwords do not match');
+      return;
+    }
+
+    if (connectionStatus !== 'connected') {
+      setError('Not connected to server. Please wait for connection to establish.');
       return;
     }
 
@@ -149,13 +155,25 @@ export default function AuthModal({ isOpen, onClose, onLogin, onRegister }: Auth
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || connectionStatus !== 'connected'}
             className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold 
                        py-3 px-6 rounded-lg hover:from-purple-700 hover:to-blue-700 
                        transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
           </button>
+          
+          {/* Connection Status Indicator */}
+          <div className={`mt-2 text-center text-xs ${
+            connectionStatus === 'connected' ? 'text-green-400' : 
+            connectionStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400'
+          }`}>
+            <div className="flex items-center justify-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-current"></div>
+              {connectionStatus === 'connected' ? 'Connected to server' : 
+               connectionStatus === 'connecting' ? 'Connecting to server...' : 'Disconnected from server'}
+            </div>
+          </div>
         </form>
 
         <div className="mt-6 text-center">

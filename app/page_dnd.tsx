@@ -286,15 +286,35 @@ export default function DnDPlatform() {
 
   const handleAuthenticatedLogin = async (username: string, password: string) => {
     try {
+      // Ensure connection is established first
+      if (status !== 'connected') {
+        console.log('🔄 Connecting before login attempt...');
+        disconnect(); // Clean up any existing connection
+        connect(username);
+        // Wait for connection
+        return new Promise((resolve, reject) => {
+          const checkConnection = () => {
+            if (status === 'connected') {
+              login(username, password).then(() => {
+                setShowAuthModal(false);
+                setPlayerName(username);
+                resolve(undefined);
+              }).catch(reject);
+            } else if (status === 'disconnected') {
+              reject(new Error('Failed to connect to server'));
+            } else {
+              setTimeout(checkConnection, 100);
+            }
+          };
+          setTimeout(checkConnection, 100);
+          // Timeout after 10 seconds
+          setTimeout(() => reject(new Error('Connection timeout')), 10000);
+        });
+      }
+      
       await login(username, password);
       setShowAuthModal(false);
       setPlayerName(username);
-      // After login, reconnect with proper username
-      disconnect();
-      setTimeout(() => {
-        connect(username);
-        // Character will be loaded from server response, phase will be set based on character availability
-      }, 500);
     } catch (error) {
       throw error; // Let AuthModal handle the error
     }
@@ -302,15 +322,35 @@ export default function DnDPlatform() {
 
   const handleRegistration = async (username: string, password: string) => {
     try {
+      // Ensure connection is established first
+      if (status !== 'connected') {
+        console.log('🔄 Connecting before registration attempt...');
+        disconnect(); // Clean up any existing connection
+        connect(username);
+        // Wait for connection
+        return new Promise((resolve, reject) => {
+          const checkConnection = () => {
+            if (status === 'connected') {
+              register(username, password).then(() => {
+                setShowAuthModal(false);
+                setPlayerName(username);
+                resolve(undefined);
+              }).catch(reject);
+            } else if (status === 'disconnected') {
+              reject(new Error('Failed to connect to server'));
+            } else {
+              setTimeout(checkConnection, 100);
+            }
+          };
+          setTimeout(checkConnection, 100);
+          // Timeout after 10 seconds
+          setTimeout(() => reject(new Error('Connection timeout')), 10000);
+        });
+      }
+      
       await register(username, password);
       setShowAuthModal(false);
       setPlayerName(username);
-      // After registration, reconnect with proper username
-      // Phase will be set automatically by useEffect based on character availability
-      disconnect();
-      setTimeout(() => {
-        connect(username);
-      }, 500);
     } catch (error) {
       throw error; // Let AuthModal handle the error
     }
@@ -566,7 +606,15 @@ export default function DnDPlatform() {
             </div>
 
             <button
-              onClick={() => setShowAuthModal(true)}
+              onClick={() => {
+                console.log('🔐 Opening auth modal, current status:', status);
+                // Establish connection before showing auth modal
+                if (status !== 'connected') {
+                  console.log('🔄 Pre-connecting for authentication...');
+                  connect('temp-auth-user');
+                }
+                setShowAuthModal(true);
+              }}
               className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded font-semibold transition-colors"
             >
               🔐 Login / Register Account
@@ -605,6 +653,7 @@ export default function DnDPlatform() {
           onClose={() => setShowAuthModal(false)}
           onLogin={handleAuthenticatedLogin}
           onRegister={handleRegistration}
+          connectionStatus={status}
         />
       </div>
     );
@@ -698,6 +747,7 @@ export default function DnDPlatform() {
           onClose={() => setShowAuthModal(false)}
           onLogin={handleAuthenticatedLogin}
           onRegister={handleRegistration}
+          connectionStatus={status}
         />
       </div>
     );
