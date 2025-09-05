@@ -290,32 +290,6 @@ export default function DnDPlatform() {
 
   const handleAuthenticatedLogin = async (username: string, password: string) => {
     try {
-      // Ensure connection is established first
-      if (status !== 'connected') {
-        console.log('🔄 Connecting before login attempt...');
-        disconnect(); // Clean up any existing connection
-        connect(username);
-        // Wait for connection
-        return new Promise((resolve, reject) => {
-          const checkConnection = () => {
-            if (status === 'connected') {
-              login(username, password).then(() => {
-                setShowAuthModal(false);
-                setPlayerName(username);
-                resolve(undefined);
-              }).catch(reject);
-            } else if (status === 'disconnected') {
-              reject(new Error('Failed to connect to server'));
-            } else {
-              setTimeout(checkConnection, 100);
-            }
-          };
-          setTimeout(checkConnection, 100);
-          // Timeout after 10 seconds
-          setTimeout(() => reject(new Error('Connection timeout')), 10000);
-        });
-      }
-      
       await login(username, password);
       setShowAuthModal(false);
       setPlayerName(username);
@@ -326,32 +300,6 @@ export default function DnDPlatform() {
 
   const handleRegistration = async (username: string, password: string) => {
     try {
-      // Ensure connection is established first
-      if (status !== 'connected') {
-        console.log('🔄 Connecting before registration attempt...');
-        disconnect(); // Clean up any existing connection
-        connect(username);
-        // Wait for connection
-        return new Promise((resolve, reject) => {
-          const checkConnection = () => {
-            if (status === 'connected') {
-              register(username, password).then(() => {
-                setShowAuthModal(false);
-                setPlayerName(username);
-                resolve(undefined);
-              }).catch(reject);
-            } else if (status === 'disconnected') {
-              reject(new Error('Failed to connect to server'));
-            } else {
-              setTimeout(checkConnection, 100);
-            }
-          };
-          setTimeout(checkConnection, 100);
-          // Timeout after 10 seconds
-          setTimeout(() => reject(new Error('Connection timeout')), 10000);
-        });
-      }
-      
       await register(username, password);
       setShowAuthModal(false);
       setPlayerName(username);
