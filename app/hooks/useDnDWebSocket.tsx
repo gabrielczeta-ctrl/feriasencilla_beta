@@ -150,7 +150,7 @@ export function useDnDWebSocket(wsUrl: string): DnDWebSocketState {
         console.error('❌ Player name:', playerName);
         
         // Additional diagnostics
-        const readyStateNames = {
+        const readyStateNames: Record<number, string> = {
           [WebSocket.CONNECTING]: 'CONNECTING',
           [WebSocket.OPEN]: 'OPEN',
           [WebSocket.CLOSING]: 'CLOSING',
