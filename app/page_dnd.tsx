@@ -58,6 +58,12 @@ export default function DnDPlatform() {
 
   // WebSocket URL configuration with fallbacks
   const getWebSocketUrl = () => {
+    console.log('🔗 Environment check:', {
+      NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL,
+      hostname: typeof window !== 'undefined' ? window.location.hostname : 'server-side',
+      href: typeof window !== 'undefined' ? window.location.href : 'server-side'
+    });
+    
     // First check environment variable
     if (process.env.NEXT_PUBLIC_WS_URL) {
       console.log('🔗 Using configured WebSocket URL:', process.env.NEXT_PUBLIC_WS_URL);
@@ -78,6 +84,7 @@ export default function DnDPlatform() {
   };
   
   const wsUrl = getWebSocketUrl();
+  console.log('🔗 Final WebSocket URL selected:', wsUrl);
   
   const {
     status,
@@ -168,12 +175,19 @@ export default function DnDPlatform() {
           dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
         }
       } else {
-        // Guest user connected - show character choice options
-        console.log('🐾 Guest user connected, showing character choice options');
-        dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
+        // Guest user connected
+        if (state.playerCharacter) {
+          // Already have a generated critter, go straight to playing
+          console.log('🐾 Guest user with generated critter, entering playing phase');
+          dispatch({ type: 'SET_PHASE', payload: 'playing' });
+        } else {
+          // No character yet, show character choice options
+          console.log('🐾 Guest user connected, showing character choice options');
+          dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
+        }
       }
     }
-  }, [isAuthenticated, userCharacter, status, dispatch]);
+  }, [isAuthenticated, userCharacter, status, state.playerCharacter, dispatch]);
 
   // Auto-refresh rooms when in lobby
   useEffect(() => {
@@ -240,15 +254,19 @@ export default function DnDPlatform() {
     if (playerName.trim()) {
       localStorage.setItem('dnd_player_name', playerName.trim());
       
+      // Generate a guest critter immediately
+      const critterCharacter = generateRandomCritter(playerName.trim());
+      dispatch({ type: 'SET_CHARACTER', payload: critterCharacter });
+      console.log(`🐾 Generated guest critter for ${playerName.trim()}: ${critterCharacter.name} (${critterCharacter.race})`);
+      
       // Ensure clean state before connecting
       console.log('🔄 Starting fresh connection for:', playerName.trim());
       disconnect(); // Clean up any existing connection
       
       setTimeout(() => {
-        // Connect first, then let the user choose character type
+        // Connect with the player name
         connect(playerName.trim());
-        // Phase will remain 'login' until connection is established
-        // Then useEffect will handle the proper flow based on authentication state
+        // Phase will be set to playing once connected since we already have a character
       }, 100);
     }
   };
@@ -559,6 +577,12 @@ export default function DnDPlatform() {
               {status === 'connected' ? 'Connected' : 
                status === 'connecting' ? 'Connecting...' : 'Disconnected'}
             </div>
+            
+            {status === 'disconnected' && (
+              <div className="text-xs text-red-400 mt-1">
+                ⚠️ Cannot connect to server. Check console for details.
+              </div>
+            )}
             
             {process.env.NODE_ENV === 'development' && (
               <button
