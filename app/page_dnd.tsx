@@ -165,25 +165,25 @@ export default function DnDPlatform() {
     }
   }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter, dispatch]);
 
-  // Handle authenticated user character loading and phase transitions
+  // Handle authenticated user character loading and phase transitions - Direct to Global Room
   useEffect(() => {
     if (status === 'connected') {
       if (isAuthenticated) {
         if (userCharacter) {
-          // User has a character, go to playing phase
-          console.log('✅ Authenticated user with character, entering playing phase');
+          // User has a character, go directly to global room
+          console.log('✅ Authenticated user with character, entering global room');
           dispatch({ type: 'SET_CHARACTER', payload: userCharacter });
           dispatch({ type: 'SET_PHASE', payload: 'playing' });
         } else {
-          // User authenticated but no character, go to character creation
-          console.log('✅ Authenticated user without character, entering character creation');
-          dispatch({ type: 'SET_PHASE', payload: 'character_creation' });
+          // User authenticated but no character, go directly to global room
+          console.log('✅ Authenticated user without character, entering global room');
+          dispatch({ type: 'SET_PHASE', payload: 'playing' });
         }
       } else {
         // Guest user connected
         if (state.playerCharacter) {
-          // Already have a generated critter, go straight to playing
-          console.log('🐾 Guest user with generated critter, entering playing phase');
+          // Already have a generated critter, go straight to global room
+          console.log('🐾 Guest user with generated critter, entering global room');
           dispatch({ type: 'SET_PHASE', payload: 'playing' });
         } else {
           // No character yet, show character choice options
@@ -560,14 +560,6 @@ export default function DnDPlatform() {
             <button
               onClick={() => {
                 console.log('🔐 Opening auth modal, current status:', status);
-                console.log('🔐 wsUrl for auth connection:', wsUrl);
-                // Establish connection before showing auth modal
-                if (status !== 'connected') {
-                  console.log('🔄 Pre-connecting for authentication...');
-                  console.log('🔄 Calling connect() with temp user');
-                  connect('temp-auth-user');
-                  console.log('🔄 Pre-connect call completed');
-                }
                 setShowAuthModal(true);
               }}
               className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded font-semibold transition-colors"
@@ -742,133 +734,7 @@ export default function DnDPlatform() {
     );
   }
 
-  // Room Lobby
-  if (state.phase === 'lobby') {
-    return (
-      <div className="min-h-screen text-white p-4 relative">
-        <FireShaderBackground setting="tavern" location="Campaign Lobby" />
-        <div className="max-w-6xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold">🏰 Campaign Lobby</h1>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">Welcome, {playerName}</span>
-                {isAuthenticated && (
-                  <span className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded border border-green-500/30">
-                    🔐 Authenticated {userCharacter && '• Character Saved'}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={disconnect}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition-colors"
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Create Room */}
-            <div className="bg-gray-900 p-6 rounded-lg">
-              <h2 className="text-xl font-semibold mb-4">Create New Campaign</h2>
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Campaign Name"
-                  value={createRoomData.roomName}
-                  onChange={(e) => setCreateRoomData(prev => ({ ...prev, roomName: e.target.value }))}
-                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400"
-                  maxLength={50}
-                />
-                <textarea
-                  placeholder="Description (optional)"
-                  value={createRoomData.description}
-                  onChange={(e) => setCreateRoomData(prev => ({ ...prev, description: e.target.value }))}
-                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded text-white placeholder-gray-400 h-24 resize-none"
-                  maxLength={200}
-                />
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={createRoomData.isPublic}
-                      onChange={(e) => setCreateRoomData(prev => ({ ...prev, isPublic: e.target.checked }))}
-                    />
-                    Public
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={createRoomData.useAIDM}
-                      onChange={(e) => setCreateRoomData(prev => ({ ...prev, useAIDM: e.target.checked }))}
-                    />
-                    AI Dungeon Master
-                  </label>
-                </div>
-                <button
-                  onClick={handleCreateRoom}
-                  disabled={!createRoomData.roomName.trim()}
-                  className="w-full p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 rounded transition-colors"
-                >
-                  Create Campaign
-                </button>
-              </div>
-            </div>
-
-            {/* Public Rooms */}
-            <div className="lg:col-span-2 bg-gray-900 p-6 rounded-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">Public Campaigns</h2>
-                <button
-                  onClick={refreshRooms}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition-colors text-sm"
-                >
-                  Refresh
-                </button>
-              </div>
-              
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {publicRooms.length === 0 ? (
-                  <p className="text-gray-400 text-center py-8">No public campaigns available</p>
-                ) : (
-                  publicRooms.map((room) => (
-                    <motion.div
-                      key={room.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="bg-gray-800 p-4 rounded border border-gray-700 hover:border-gray-600 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">{room.name}</h3>
-                          {room.description && (
-                            <p className="text-gray-400 text-sm mt-1">{room.description}</p>
-                          )}
-                          <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
-                            <span>Players: {room.players?.length || 0}/{room.maxPlayers || 0}</span>
-                            <span>Phase: {room.gameState?.phase || 'Waiting'}</span>
-                            {room.settings?.useAIDM && <span className="text-purple-400">🤖 AI DM</span>}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleJoinRoom(room.id)}
-                          disabled={(room.players?.length || 0) >= (room.maxPlayers || 0)}
-                          className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 rounded transition-colors"
-                        >
-                          Join
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Skip lobby - go directly to global room
 
   // Character Creation
   if (state.phase === 'character_creation') {
@@ -981,14 +847,15 @@ export default function DnDPlatform() {
         <div className="bg-black/20 backdrop-blur-sm p-4 border-b border-white/10">
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">🎲 The Eternal Tavern</h1>
+              <h1 className="text-2xl font-bold">🌍 The Eternal Tavern - Global Room</h1>
               <p className="text-gray-300">
-                Global D&D Server • {globalServerState.totalPlayers} adventurers online
+                Railway Production Server • {globalServerState.totalPlayers} adventurers online
                 {isAuthenticated && userCharacter ? (
                   <span className="ml-2 text-green-400">• Character Saved</span>
                 ) : !isAuthenticated ? (
                   <span className="ml-2 text-purple-400">• Guest Mode</span>
                 ) : null}
+                <span className="ml-2 text-blue-400">• AI Dungeon Master Active</span>
               </p>
             </div>
             <div className="flex items-center gap-2">

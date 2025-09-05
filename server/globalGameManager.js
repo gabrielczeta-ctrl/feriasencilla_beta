@@ -34,9 +34,11 @@ export class GlobalGameManager {
         }
       },
       settings: {
-        playerTurnDuration: 15000, // 15 seconds for player input
-        dmUpdateInterval: 30000,   // 30 seconds between DM updates
-        maxContextMessages: 50,    // Keep last 50 messages for DM context
+        playerTurnDuration: 20000, // 20 seconds for player input (more time for 15 players)
+        dmUpdateInterval: 45000,   // 45 seconds between DM updates (allow more player interactions)
+        maxContextMessages: 100,   // Keep last 100 messages for DM context (more history for 15 players)
+        maxPlayersPerUpdate: 15,   // Support up to 15 concurrent players
+        messageRateLimit: 1000,    // 1 second cooldown between messages per player
       }
     };
 
@@ -44,6 +46,10 @@ export class GlobalGameManager {
     this.playerTurnTimer = null;
     this.dmUpdateTimer = null;
     this.clients = new Set();
+    
+    // Rate limiting for 15+ concurrent players
+    this.playerLastAction = new Map(); // playerId -> timestamp
+    this.messageQueue = []; // Queue for rate-limited messages
 
     this.initializeGlobalRoom();
     this.initializeBattleMap();
@@ -377,9 +383,31 @@ export class GlobalGameManager {
     this.globalRoom.players.delete(playerId);
   }
 
+  updatePlayerCharacter(playerId, character) {
+    const player = this.globalRoom.players.get(playerId);
+    if (player) {
+      player.character = character;
+      console.log(`✅ Updated character for player ${playerId}: ${character.name}`);
+      return true;
+    } else {
+      console.log(`❌ Player ${playerId} not found in global game`);
+      return false;
+    }
+  }
+
   addPlayerAction(playerId, action) {
     const player = this.globalRoom.players.get(playerId);
     if (!player) return false;
+
+    // Rate limiting check for 15+ concurrent players
+    const now = Date.now();
+    const lastAction = this.playerLastAction.get(playerId) || 0;
+    const timeSinceLastAction = now - lastAction;
+    
+    if (timeSinceLastAction < this.globalRoom.settings.messageRateLimit) {
+      const cooldownRemaining = Math.ceil((this.globalRoom.settings.messageRateLimit - timeSinceLastAction) / 1000);
+      return { success: false, message: `Please wait ${cooldownRemaining} seconds before sending another action` };
+    }
 
     // Check if in player turn phase
     if (this.globalRoom.gameState.turnPhase !== 'player_turns') {
@@ -403,6 +431,9 @@ export class GlobalGameManager {
 
     this.globalRoom.gameState.messageQueue.push(actionMessage);
     this.globalRoom.gameState.playersWhoActed.add(playerId);
+    
+    // Update rate limiting timestamp
+    this.playerLastAction.set(playerId, now);
 
     // Broadcast that player acted
     this.broadcastToAll({

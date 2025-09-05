@@ -554,13 +554,12 @@ async function handleListRooms(ws) {
 }
 
 async function handleCreateCharacter(ws, msg, ip) {
-  if (!ws.roomId || !msg.character) return;
+  if (!msg.character) {
+    console.log('❌ No character data provided');
+    return;
+  }
   
-  const room = await loadRoom(ws.roomId);
-  if (!room) return;
-  
-  const player = room.players.find(p => p.id === ws.playerId);
-  if (!player) return;
+  console.log('🎭 Creating character for player:', ws.playerId, 'in room:', ws.roomId || 'global');
   
   // Validate and sanitize character data
   const character = sanitizeCharacter(msg.character);
@@ -568,11 +567,34 @@ async function handleCreateCharacter(ws, msg, ip) {
   character.playerId = ws.playerId;
   character.createdAt = Date.now();
   
-  player.character = character;
-  player.characterId = character.id;
-  
-  room.lastActivity = Date.now();
-  await saveRoom(room);
+  // Handle room-based character creation
+  if (ws.roomId) {
+    const room = await loadRoom(ws.roomId);
+    if (!room) {
+      console.log('❌ Room not found:', ws.roomId);
+      return;
+    }
+    
+    const player = room.players.find(p => p.id === ws.playerId);
+    if (!player) {
+      console.log('❌ Player not found in room:', ws.playerId);
+      return;
+    }
+    
+    player.character = character;
+    player.characterId = character.id;
+    
+    room.lastActivity = Date.now();
+    await saveRoom(room);
+    console.log('✅ Character saved to room:', room.name);
+  } else {
+    // Handle global game character creation
+    console.log('🌍 Creating character for global game');
+    if (globalGameManager) {
+      globalGameManager.updatePlayerCharacter(ws.playerId, character);
+      console.log('✅ Character registered with global game manager');
+    }
+  }
   
   // Save character to user profile if authenticated
   if (ws.username && userManager) {
