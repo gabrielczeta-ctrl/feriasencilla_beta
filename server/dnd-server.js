@@ -560,6 +560,7 @@ async function handleCreateCharacter(ws, msg, ip) {
   }
   
   console.log('🎭 Creating character for player:', ws.playerId, 'in room:', ws.roomId || 'global');
+  console.log('🎭 Character data received:', JSON.stringify(msg.character, null, 2));
   
   // Validate and sanitize character data
   const character = sanitizeCharacter(msg.character);

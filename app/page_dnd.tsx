@@ -157,11 +157,18 @@ export default function DnDPlatform() {
   useEffect(() => {
     if (status === 'connected' && state.playerCharacter && state.phase === 'playing' && !isAuthenticated) {
       console.log('🐾 Sending guest character to server:', state.playerCharacter.name);
-      createCharacter(state.playerCharacter).catch(error => {
-        console.error('❌ Failed to send guest character to server:', error);
-        // If character creation fails, show error and go back to character choice
-        dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
-      });
+      console.log('🐾 Character details:', JSON.stringify(state.playerCharacter, null, 2));
+      
+      // Add a small delay to ensure server is ready
+      setTimeout(() => {
+        createCharacter(state.playerCharacter).then(() => {
+          console.log('✅ Guest character successfully sent to server');
+        }).catch(error => {
+          console.error('❌ Failed to send guest character to server:', error);
+          // If character creation fails, show error and go back to character choice
+          dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
+        });
+      }, 200);
     }
   }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter, dispatch]);
 
@@ -560,7 +567,15 @@ export default function DnDPlatform() {
             <button
               onClick={() => {
                 console.log('🔐 Opening auth modal, current status:', status);
-                setShowAuthModal(true);
+                // Establish connection before showing auth modal if not connected
+                if (status !== 'connected') {
+                  console.log('🔄 Pre-connecting for authentication...');
+                  connect('temp-auth-user');
+                  // Wait a moment for connection, then show modal
+                  setTimeout(() => setShowAuthModal(true), 500);
+                } else {
+                  setShowAuthModal(true);
+                }
               }}
               className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded font-semibold transition-colors"
             >
