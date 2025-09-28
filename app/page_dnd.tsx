@@ -161,13 +161,15 @@ export default function DnDPlatform() {
       
       // Add a small delay to ensure server is ready
       setTimeout(() => {
-        createCharacter(state.playerCharacter).then(() => {
-          console.log('✅ Guest character successfully sent to server');
-        }).catch(error => {
-          console.error('❌ Failed to send guest character to server:', error);
-          // If character creation fails, show error and go back to character choice
-          dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
-        });
+        if (state.playerCharacter) {
+          createCharacter(state.playerCharacter).then(() => {
+            console.log('✅ Guest character successfully sent to server');
+          }).catch(error => {
+            console.error('❌ Failed to send guest character to server:', error);
+            // If character creation fails, show error and go back to character choice
+            dispatch({ type: 'SET_PHASE', payload: 'guest_character_choice' });
+          });
+        }
       }, 200);
     }
   }, [status, state.playerCharacter, state.phase, isAuthenticated, createCharacter, dispatch]);

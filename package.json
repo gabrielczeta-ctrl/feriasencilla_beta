@@ -13,12 +13,7 @@
     "type-check": "tsc --noEmit",
     "server": "cd server && node dnd-server.js",
     "server:dev": "cd server && node dnd-server.js",
-    "server:install": "cd server && npm install",
-    "test": "jest --testPathPattern=__tests__/frontend",
-    "test:watch": "jest --watch --testPathPattern=__tests__/frontend",
-    "test:coverage": "jest --coverage --testPathPattern=__tests__/frontend",
-    "test:server": "cd server && npm test",
-    "test:e2e": "cd __tests__ && playwright test"
+    "server:install": "cd server && npm install"
   },
   "dependencies": {
     "next": "^14.0.0",
@@ -35,14 +30,6 @@
     "eslint-config-next": "^14.0.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5.2.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/jest-dom": "^6.1.4",
-    "@testing-library/user-event": "^14.5.1",
-    "@playwright/test": "^1.40.0",
-    "@types/jest": "^29.5.8",
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0",
-    "ts-jest": "^29.1.1"
+    "typescript": "^5.2.0"
   }
 }
